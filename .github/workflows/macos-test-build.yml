@@ -41,6 +41,12 @@ jobs:
           mkdir -p dist/StudyGrove
           ditto "$APP" dist/StudyGrove/StudyGrove.app
           cp "macos/How to open.txt" dist/StudyGrove/
+          cp "macos/Open Study Grove.command" dist/StudyGrove/
+          chmod +x "dist/StudyGrove/Open Study Grove.command"
+          xattr -cr dist/StudyGrove/StudyGrove.app || true
+          codesign --force --deep --sign - dist/StudyGrove/StudyGrove.app
+          file dist/StudyGrove/StudyGrove.app/Contents/MacOS/StudyGrove || true
+          lipo -info dist/StudyGrove/StudyGrove.app/Contents/MacOS/StudyGrove || true
           ditto -c -k --keepParent dist/StudyGrove StudyGrove-macos.zip
           ls -lh StudyGrove-macos.zip
 
@@ -56,5 +62,5 @@ jobs:
           gh release delete macos-usb --yes || true
           gh release create macos-usb \
             --title "Study Grove for Mac (USB)" \
-            --notes "Download StudyGrove-macos.zip, copy it to a USB stick, unzip on the Mac, then right-click StudyGrove.app → Open." \
+            --notes "Download StudyGrove-macos.zip. Copy the StudyGrove folder to the Mac Desktop, then double-click Open Study Grove.command. If it quits unexpectedly, run: xattr -cr ~/Desktop/StudyGrove/StudyGrove.app && open ~/Desktop/StudyGrove/StudyGrove.app" \
             StudyGrove-macos.zip

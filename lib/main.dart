@@ -9,10 +9,16 @@ import 'services/study_ai_settings.dart';
 import 'theme/theme_controller.dart';
 
 final themeController = ThemeController();
+bool firebaseReady = false;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    firebaseReady = true;
+  } catch (e, st) {
+    debugPrint('Firebase failed to start: $e\n$st');
+  }
   // Load appearance before first paint to avoid theme flash.
   await themeController.load();
   await studyAiSettings.load();
@@ -45,6 +51,19 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!firebaseReady) {
+      return const Scaffold(
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Study Grove could not start cloud login on this Mac. Check the network and open the app again.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snap) {

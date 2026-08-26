@@ -1,13 +1,20 @@
 Study Grove for Mac
 ===================
 
-1. Copy the whole StudyGrove folder onto the Mac (Desktop is fine).
-2. Right-click StudyGrove.app, choose Open, then click Open.
-   A normal double-click is often blocked until you do this once.
-3. If macOS still says it cannot be opened, open Terminal and run:
+If the app says it "quit unexpectedly", do this first:
+
+1. Copy the whole StudyGrove folder to Desktop (not from the USB stick).
+2. Double-click "Open Study Grove.command".
+   If macOS blocks that, right-click it → Open → Open.
+3. If it still quits, open Terminal, paste this, and press Return:
 
    xattr -cr ~/Desktop/StudyGrove/StudyGrove.app
+   open ~/Desktop/StudyGrove/StudyGrove.app
 
-   then right-click StudyGrove.app → Open again.
-4. Allow the microphone when Voice Chat asks.
-5. In Settings, add an OpenAI key so Voice Chat can talk.
+Then:
+- Right-click StudyGrove.app → Open → Open, if macOS asks.
+- Allow the microphone when Voice Chat asks.
+- In Settings, add an OpenAI key so Voice Chat can talk.
+
+This Mac app is not from the App Store, so macOS often blocks it once.
+Do not run it directly off the USB stick.
