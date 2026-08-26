@@ -47,11 +47,13 @@ class StudyAiSettings extends ChangeNotifier {
   static const _ttsPrefsKey = 'study_ai_openai_tts_key_fallback';
   static const _ttsCustomFlagKey = 'study_ai_using_custom_tts_key';
 
-  /// Optional Study AI key from Settings. There is no bundled cloud key in source.
-  static const bundledKey = '';
+  /// Built-in Study AI (Anthropic) key. Injected at build time so it is not
+  /// stored in the public GitHub source.
+  static const bundledKey = String.fromEnvironment('BUNDLED_STUDY_AI_KEY');
 
-  /// Optional OpenAI Listen/Voice key from Settings.
-  static const bundledOpenAiTtsKey = '';
+  /// Built-in OpenAI key for Listen / Voice Chat. Injected at build time.
+  static const bundledOpenAiTtsKey =
+      String.fromEnvironment('BUNDLED_OPENAI_TTS_KEY');
 
   static const _secure = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),

@@ -14,7 +14,7 @@ If the app says it "quit unexpectedly", do this first:
 Then:
 - Right-click StudyGrove.app → Open → Open, if macOS asks.
 - Allow the microphone when Voice Chat asks.
-- In Settings, add an OpenAI key so Voice Chat can talk.
+- Voice Chat and Study AI already have built-in keys. You can still paste your own in Settings.
 
 This Mac app is not from the App Store, so macOS often blocks it once.
 Do not run it directly off the USB stick.

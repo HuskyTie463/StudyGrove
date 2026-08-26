@@ -51,7 +51,6 @@ class _ShellNavItem {
     required this.selectedIcon,
     required this.label,
     required this.shortLabel,
-    this.primary = true,
   });
 
   final AppPage page;
@@ -59,7 +58,6 @@ class _ShellNavItem {
   final IconData selectedIcon;
   final String label;
   final String shortLabel;
-  final bool primary;
 }
 
 const _shellNavItems = <_ShellNavItem>[
@@ -97,7 +95,6 @@ const _shellNavItems = <_ShellNavItem>[
     selectedIcon: Icons.view_week,
     label: 'Weekly Planner',
     shortLabel: 'Week',
-    primary: false,
   ),
   _ShellNavItem(
     page: AppPage.assessments,
@@ -112,7 +109,13 @@ const _shellNavItems = <_ShellNavItem>[
     selectedIcon: Icons.menu_book,
     label: 'Subjects',
     shortLabel: 'Subj',
-    primary: false,
+  ),
+  _ShellNavItem(
+    page: AppPage.lectureLab,
+    icon: Icons.science_outlined,
+    selectedIcon: Icons.science,
+    label: 'Lecture Lab',
+    shortLabel: 'Lab',
   ),
   _ShellNavItem(
     page: AppPage.memoryWeather,
@@ -122,20 +125,11 @@ const _shellNavItems = <_ShellNavItem>[
     shortLabel: 'Memory',
   ),
   _ShellNavItem(
-    page: AppPage.lectureLab,
-    icon: Icons.science_outlined,
-    selectedIcon: Icons.science,
-    label: 'Lecture Lab',
-    shortLabel: 'Lab',
-    primary: false,
-  ),
-  _ShellNavItem(
     page: AppPage.consolidation,
     icon: Icons.spa_outlined,
     selectedIcon: Icons.spa,
     label: 'Consolidation',
     shortLabel: 'Review',
-    primary: false,
   ),
   _ShellNavItem(
     page: AppPage.pomodoro,
@@ -150,7 +144,6 @@ const _shellNavItems = <_ShellNavItem>[
     selectedIcon: Icons.casino,
     label: 'Study Roulette',
     shortLabel: 'Spin',
-    primary: false,
   ),
   _ShellNavItem(
     page: AppPage.settings,
@@ -158,18 +151,8 @@ const _shellNavItems = <_ShellNavItem>[
     selectedIcon: Icons.settings,
     label: 'Settings',
     shortLabel: 'Set',
-    primary: false,
   ),
 ];
-
-List<_ShellNavItem> get _primaryNavItems =>
-    _shellNavItems.where((item) => item.primary).toList(growable: false);
-
-List<_ShellNavItem> get _secondaryNavItems =>
-    _shellNavItems.where((item) => !item.primary).toList(growable: false);
-
-bool _isSecondaryPage(AppPage page) =>
-    _secondaryNavItems.any((item) => item.page == page);
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -785,99 +768,32 @@ class _BottomNav extends StatelessWidget {
   final AppPage selected;
   final ValueChanged<AppPage> onSelect;
 
-  static const _mobilePrimaryCount = 4;
-
-  int get _currentIndex {
-    if (_isSecondaryPage(selected)) return _mobilePrimaryCount;
-    final primaryIndex =
-        _primaryNavItems.indexWhere((item) => item.page == selected);
-    if (primaryIndex >= _mobilePrimaryCount) return _mobilePrimaryCount;
-    return primaryIndex >= 0 ? primaryIndex : 0;
-  }
-
-  Future<void> _openMoreSheet(BuildContext context) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        return SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: Text(
-                  'More destinations',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              for (final item in _secondaryNavItems)
-                ListTile(
-                  leading: Icon(
-                    selected == item.page ? item.selectedIcon : item.icon,
-                  ),
-                  title: Text(item.label),
-                  selected: selected == item.page,
-                  onTap: () {
-                    Navigator.pop(context);
-                    onSelect(item.page);
-                  },
-                ),
-              if (_primaryNavItems.length > _mobilePrimaryCount) ...[
-                const Divider(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                  child: Text(
-                    'Also available',
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                ),
-                for (final item in _primaryNavItems.skip(_mobilePrimaryCount))
-                  ListTile(
-                    leading: Icon(
-                      selected == item.page ? item.selectedIcon : item.icon,
-                    ),
-                    title: Text(item.label),
-                    selected: selected == item.page,
-                    onTap: () {
-                      Navigator.pop(context);
-                      onSelect(item.page);
-                    },
-                  ),
-              ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return BottomNavigationBar(
-      currentIndex: _currentIndex,
-      onTap: (index) {
-        if (index == _mobilePrimaryCount) {
-          _openMoreSheet(context);
-          return;
-        }
-        onSelect(_primaryNavItems[index].page);
-      },
-      type: BottomNavigationBarType.fixed,
-      items: [
-        for (final item in _primaryNavItems.take(_mobilePrimaryCount))
-          BottomNavigationBarItem(
-            icon: Icon(item.icon),
-            activeIcon: Icon(item.selectedIcon),
-            label: item.shortLabel,
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surface,
+      elevation: 8,
+      child: SafeArea(
+        child: SizedBox(
+          height: 64,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            children: [
+              for (final item in _shellNavItems)
+                _RailTile(
+                  item: item,
+                  selected: selected == item.page,
+                  height: 64,
+                  onTap: () => onSelect(item.page),
+                  selectedColor: scheme.primary,
+                  unselectedColor: scheme.onSurfaceVariant,
+                ),
+            ],
           ),
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.more_horiz),
-          activeIcon: Icon(Icons.more_horiz),
-          label: 'More',
         ),
-      ],
+      ),
     );
   }
 }

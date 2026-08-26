@@ -13,7 +13,8 @@ You do **not** need Flutter or Xcode. Wait for the Mac package on this page:
 3. On the Mac, copy the unzipped **StudyGrove** folder to the Desktop. Do not run it from the USB stick.
 4. Double-click **Open Study Grove.command**. If macOS blocks it, right-click → **Open**.
 5. Allow the microphone when Voice Chat asks.
-6. In Settings, add an OpenAI key so Voice Chat can talk.
+
+Voice Chat and Study AI already include built-in keys. You can still paste your own in Settings.
 
 If it says **quit unexpectedly**, open Terminal and run:
 

@@ -47,3 +47,4 @@ app.*.map.json
 # Local Python / tooling
 .venv/
 .vs/
+.bundled_keys
