@@ -1,0 +1,78 @@
+name: flutter_organiser
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.6+6
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  msix: ^3.16.13
+
+  firebase_core: ^4.9.0
+  firebase_auth: ^6.5.1
+  cloud_firestore: ^6.3.0
+  shared_preferences: ^2.2.2
+  fl_chart: ^1.2.0
+  palette_generator: ^0.3.3+7
+  google_fonts: ^8.2.1
+  http: ^1.2.2
+  flutter_secure_storage: ^9.2.4
+  flutter_tts: ^4.2.3
+  audioplayers: ^6.5.0
+  file_picker: ^8.1.7
+  desktop_drop: ^0.5.0
+  archive: ^4.0.7
+  syncfusion_flutter_pdf: ^29.2.11
+  flutter_math_fork: ^0.7.4
+  speech_to_text: ^7.3.0
+  record: ^6.0.0
+  web_socket_channel: ^3.0.3
+  flutter_soloud: ^4.1.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/backgrounds/
+    - assets/studio_garden/
+    - assets/motifs/
+    - assets/app_icon.png
+    - assets/assessment_concept_3_studio_garden.png
+    - assets/f55af4eb-046a-42f3-887f-6b8c50de1a37.png
+    - agenda_photo/pexels-photo-2409038.jpeg
+
+flutter_launcher_icons:
+  android: true
+  image_path: assets/app_icon.png
+  windows:
+    generate: true
+    image_path: assets/app_icon.png
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: assets/app_icon.png
+  ios: true
+
+msix_config:
+  display_name: Study Grove
+  publisher_display_name: Adara Curry
+  identity_name: AdaraCurry.StudyGrove
+  publisher: CN=181BAD8F-E8A0-4BED-AE16-A01877D84708
+  msix_version: 1.0.7.0
+  logo_path: windows/runner/resources/app_icon.png
+  capabilities: internetClient, microphone
+  languages: en-us
+  store: true

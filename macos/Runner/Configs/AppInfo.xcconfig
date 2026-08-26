@@ -1,0 +1,4 @@
+// Application-level settings for the Runner target.
+PRODUCT_NAME = StudyGrove
+PRODUCT_BUNDLE_IDENTIFIER = com.adaracurry.studygrove
+PRODUCT_COPYRIGHT = Copyright © 2026 Adara Curry. All rights reserved.

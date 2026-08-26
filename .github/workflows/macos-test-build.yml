@@ -1,0 +1,30 @@
+name: macOS test build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - name: Zip StudyGrove.app
+        run: |
+          APP=$(find build/macos -name 'StudyGrove.app' -o -name 'Study Grove.app' | head -n 1)
+          if [ -z "$APP" ]; then
+            echo "Built app not found"
+            find build/macos -name '*.app'
+            exit 1
+          fi
+          ditto -c -k --keepParent "$APP" StudyGrove-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StudyGrove-macos
+          path: StudyGrove-macos.zip

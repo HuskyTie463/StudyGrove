@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "34782540195",
+    "project_id": "study-app-18492",
+    "storage_bucket": "study-app-18492.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:34782540195:android:c8e8afc5216e4711c5aa16",
+        "android_client_info": {
+          "package_name": "com.example.flutter_organiser"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMm20gGS51JxFHXVqSuiXHgza70CgDT9Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
