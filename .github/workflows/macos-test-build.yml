@@ -24,6 +24,7 @@ jobs:
         run: |
           flutter --version
           flutter config --enable-macos-desktop
+          flutter config --no-enable-macos-arm64-only || true
           flutter precache --macos
 
       - run: flutter pub get
@@ -53,11 +54,34 @@ jobs:
           ditto "$APP" dist/StudyGrove/StudyGrove.app
           cp "macos/How to open.txt" dist/StudyGrove/
           cp "macos/Open Study Grove.command" dist/StudyGrove/
+          cp "macos/Runner/Release.entitlements" dist/StudyGrove/Release.entitlements
           chmod +x "dist/StudyGrove/Open Study Grove.command"
-          xattr -cr dist/StudyGrove/StudyGrove.app || true
-          codesign --force --deep --sign - dist/StudyGrove/StudyGrove.app
+          # Windows checkouts can leave CRLF, which breaks double-click .command on Mac.
+          perl -pi -e 's/\r\n|\r/\n/g' \
+            "dist/StudyGrove/Open Study Grove.command" \
+            "dist/StudyGrove/How to open.txt"
+          xattr -cr dist/StudyGrove || true
+          # Re-sign ad-hoc WITH entitlements. Signing without them strips JIT /
+          # library-validation exceptions and Gatekeeper SIGKILLs the USB copy.
+          codesign --force --deep --sign - \
+            --entitlements macos/Runner/Release.entitlements \
+            dist/StudyGrove/StudyGrove.app
+          codesign --force --sign - "dist/StudyGrove/Open Study Grove.command" || true
+          echo "==== binary arch ===="
           file dist/StudyGrove/StudyGrove.app/Contents/MacOS/StudyGrove || true
-          lipo -info dist/StudyGrove/StudyGrove.app/Contents/MacOS/StudyGrove || true
+          INFO=$(lipo -info dist/StudyGrove/StudyGrove.app/Contents/MacOS/StudyGrove)
+          echo "$INFO"
+          if ! echo "$INFO" | grep -q arm64 || ! echo "$INFO" | grep -q x86_64; then
+            echo "ERROR: Mac binary is not universal (need arm64 + x86_64). Got: $INFO"
+            exit 1
+          fi
+          echo "==== entitlements ===="
+          codesign -d --entitlements - dist/StudyGrove/StudyGrove.app || true
+          echo "==== nested binaries ===="
+          find dist/StudyGrove/StudyGrove.app/Contents -type f \( -name '*.dylib' -o -name '*.so' \) \
+            | while read -r f; do
+                lipo -info "$f" 2>/dev/null || file "$f"
+              done | head -n 80
           ditto -c -k --keepParent dist/StudyGrove StudyGrove-macos.zip
           ls -lh StudyGrove-macos.zip
 
@@ -73,5 +97,5 @@ jobs:
           gh release delete macos-usb --yes || true
           gh release create macos-usb \
             --title "Study Grove for Mac (USB)" \
-            --notes "Download StudyGrove-macos.zip. Copy the StudyGrove folder to the Mac Desktop, then double-click Open Study Grove.command. If it quits unexpectedly, run: xattr -cr ~/Desktop/StudyGrove/StudyGrove.app && open ~/Desktop/StudyGrove/StudyGrove.app" \
+            --notes "Download a FRESH StudyGrove-macos.zip (old copies keep crashing). Copy the StudyGrove folder to the Mac Desktop, then double-click Open Study Grove.command. Do not open the .app from the USB stick. Fallback: xattr -cr ~/Desktop/StudyGrove && open ~/Desktop/StudyGrove/StudyGrove.app" \
             StudyGrove-macos.zip

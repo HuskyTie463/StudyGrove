@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/models.dart';
+import 'lecture_file_import.dart';
 import 'study_ai_client.dart';
 import 'study_ai_settings.dart';
 
@@ -199,7 +200,18 @@ class LectureLabService {
     DateTime? lectureDate,
     List<String> assessmentIds = const [],
     List<String> learningObjectives = const [],
+    List<int>? pdfBytes,
+    String? pdfFilename,
   }) async {
+    final pasted = body.trim();
+    final localPdf = (pdfBytes != null && pdfBytes.isNotEmpty)
+        ? LectureFileImport.extractPdfText(pdfBytes)
+        : '';
+    final storedBody = pasted.isNotEmpty ? pasted : localPdf;
+    final sendPdfToModel = studyAiSettings.provider == StudyAiProvider.anthropic &&
+        pdfBytes != null &&
+        pdfBytes.isNotEmpty;
+
     List<({String title, String? objective, List<RecallQuestion> questions})>
         aligned;
     var usedAi = false;
@@ -207,8 +219,10 @@ class LectureLabService {
       try {
         final extracted = await StudyAiClient.instance.extractLecture(
           title: title,
-          body: body,
+          body: sendPdfToModel ? pasted : storedBody,
           objectives: learningObjectives,
+          pdfBytes: pdfBytes,
+          pdfFilename: pdfFilename,
         );
         aligned = extracted
             .map(
@@ -221,14 +235,20 @@ class LectureLabService {
             .toList();
         usedAi = true;
       } catch (_) {
+        if (storedBody.isEmpty) rethrow;
         aligned = extractAlignedTopics(
-          body: body,
+          body: storedBody,
           objectives: learningObjectives,
         ).map((e) => (title: e.title, objective: e.objective, questions: <RecallQuestion>[])).toList();
       }
     } else {
+      if (storedBody.isEmpty) {
+        throw StudyAiException(
+          'Could not read text from ${pdfFilename ?? 'the PDF'}. Add an API key in Settings to extract with AI, or paste notes.',
+        );
+      }
       aligned = extractAlignedTopics(
-        body: body,
+        body: storedBody,
         objectives: learningObjectives,
       ).map((e) => (title: e.title, objective: e.objective, questions: <RecallQuestion>[])).toList();
     }
@@ -237,7 +257,7 @@ class LectureLabService {
     for (final item in aligned) {
       final qs = item.questions.isNotEmpty
           ? item.questions
-          : generateQuestionsManual(topic: item.title, sourceBody: body);
+          : generateQuestionsManual(topic: item.title, sourceBody: storedBody);
       final ref = await _topics.add({
         'title': item.title,
         'course': course,
@@ -266,7 +286,7 @@ class LectureLabService {
 
     final doc = await _lectures.add({
       'title': title,
-      'body': body,
+      'body': storedBody,
       'course': course,
       'subjectId': subjectId,
       'lectureDate':

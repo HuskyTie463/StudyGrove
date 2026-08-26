@@ -13,16 +13,28 @@ bool firebaseReady = false;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    firebaseReady = true;
-  } catch (e, st) {
-    debugPrint('Firebase failed to start: $e\n$st');
-  }
   // Load appearance before first paint to avoid theme flash.
+  // Do not initialize Firebase before runApp: the macOS C++ SDK can abort
+  // the process (missing plist / bad app id), which Dart try/catch cannot
+  // stop, and macOS then shows "StudyGrove quit unexpectedly".
   await themeController.load();
   await studyAiSettings.load();
   runApp(const OrganiserApp());
+}
+
+Future<bool> initializeFirebaseSafely() async {
+  if (firebaseReady) return true;
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    firebaseReady = true;
+    return true;
+  } catch (e, st) {
+    debugPrint('Firebase failed to start: $e\n$st');
+    firebaseReady = false;
+    return false;
+  }
 }
 
 class OrganiserApp extends StatelessWidget {
@@ -46,11 +58,36 @@ class OrganiserApp extends StatelessWidget {
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
   @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool _starting = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startFirebase();
+    });
+  }
+
+  Future<void> _startFirebase() async {
+    await initializeFirebaseSafely();
+    if (mounted) setState(() => _starting = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_starting) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     if (!firebaseReady) {
       return const Scaffold(
         body: Center(

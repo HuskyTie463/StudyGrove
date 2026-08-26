@@ -13,14 +13,21 @@ class LectureImportResult {
     required this.filename,
     required this.text,
     required this.source,
+    this.bytes,
+    this.mediaType,
   });
 
   final String filename;
   final String text;
   final String source;
+  final Uint8List? bytes;
+  final String? mediaType;
+
+  bool get isPdf => mediaType == 'application/pdf' && bytes != null;
 }
 
-/// Reads lecture files into plain text for the notes field.
+/// Reads lecture files. PDFs stay as attachments for the model; other
+/// types are turned into plain text for the notes field.
 class LectureFileImport {
   const LectureFileImport();
 
@@ -96,43 +103,26 @@ class LectureFileImport {
     return importBytes(filename: name, bytes: await file.readAsBytes());
   }
 
-  Future<LectureImportResult> _fromPdf(String filename, Uint8List bytes) async {
-    var local = '';
+  /// Local text pull for storing the lecture / OpenAI fallback. Does not
+  /// belong in the paste-notes field.
+  static String extractPdfText(List<int> bytes) {
     try {
       final doc = PdfDocument(inputBytes: bytes);
-      local = PdfTextExtractor(doc).extractText().trim();
+      final text = PdfTextExtractor(doc).extractText().trim();
       doc.dispose();
+      return text;
     } catch (_) {
-      local = '';
+      return '';
     }
-    if (local.length >= 80) {
-      return LectureImportResult(
-        filename: filename,
-        text: local,
-        source: 'pdf',
-      );
-    }
-    if (!studyAiSettings.hasKey) {
-      if (local.isNotEmpty) {
-        return LectureImportResult(
-          filename: filename,
-          text: local,
-          source: 'pdf',
-        );
-      }
-      throw StudyAiException(
-        'Could not read text from $filename. If it is a scan, add an API key in Settings or paste the notes.',
-      );
-    }
-    final ai = await StudyAiClient.instance.transcribeFile(
-      bytes: bytes,
-      filename: filename,
-      mediaType: 'application/pdf',
-    );
+  }
+
+  Future<LectureImportResult> _fromPdf(String filename, Uint8List bytes) async {
     return LectureImportResult(
       filename: filename,
-      text: ai.trim(),
-      source: 'ai',
+      text: '',
+      source: 'pdf',
+      bytes: bytes,
+      mediaType: 'application/pdf',
     );
   }
 

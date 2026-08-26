@@ -184,6 +184,20 @@ class LectureLabPage extends StatefulWidget {
   State<LectureLabPage> createState() => _LectureLabPageState();
 }
 
+class _AttachedLecture {
+  const _AttachedLecture({
+    required this.filename,
+    this.bytes,
+    this.mediaType,
+  });
+
+  final String filename;
+  final Uint8List? bytes;
+  final String? mediaType;
+
+  bool get isPdf => mediaType == 'application/pdf' && bytes != null;
+}
+
 class _LectureLabPageState extends State<LectureLabPage> {
   final _titleCtrl = TextEditingController();
   final _bodyCtrl = TextEditingController();
@@ -193,7 +207,7 @@ class _LectureLabPageState extends State<LectureLabPage> {
   bool _saving = false;
   bool _importing = false;
   bool _dragging = false;
-  final _attached = <String>[];
+  final _attached = <_AttachedLecture>[];
 
   @override
   void dispose() {
@@ -309,9 +323,9 @@ class _LectureLabPageState extends State<LectureLabPage> {
                     controller: _bodyCtrl,
                     maxLines: 10,
                     decoration: const InputDecoration(
-                      labelText: 'Paste notes, or drop a lecture file',
+                      labelText: 'Paste notes (optional if you add a PDF)',
                       hintText:
-                          'PDF, Word, PowerPoint, text, or a slide image',
+                          'Type or paste notes. PDFs stay attached — they are not dumped here.',
                       alignLabelWithHint: true,
                       border: InputBorder.none,
                     ),
@@ -340,9 +354,9 @@ class _LectureLabPageState extends State<LectureLabPage> {
                       runSpacing: 8,
                       children: _attached
                           .map(
-                            (name) => Chip(
+                            (file) => Chip(
                               avatar: const Icon(Icons.insert_drive_file_outlined, size: 16),
-                              label: Text(name),
+                              label: Text(file.filename),
                             ),
                           )
                           .toList(),
@@ -463,6 +477,24 @@ class _LectureLabPageState extends State<LectureLabPage> {
   }
 
   void _applyImport(LectureImportResult result) {
+    if (_titleCtrl.text.trim().isEmpty) {
+      final name = result.filename.replaceAll(RegExp(r'\.[^.]+$'), '');
+      _titleCtrl.text = name;
+    }
+    if (result.isPdf) {
+      setState(() {
+        if (!_attached.any((f) => f.filename == result.filename)) {
+          _attached.add(
+            _AttachedLecture(
+              filename: result.filename,
+              bytes: result.bytes,
+              mediaType: result.mediaType,
+            ),
+          );
+        }
+      });
+      return;
+    }
     if (result.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No text found in ${result.filename}.')),
@@ -472,19 +504,29 @@ class _LectureLabPageState extends State<LectureLabPage> {
     final chunk = '--- ${result.filename} ---\n${result.text.trim()}';
     final existing = _bodyCtrl.text.trim();
     _bodyCtrl.text = existing.isEmpty ? chunk : '$existing\n\n$chunk';
-    if (_titleCtrl.text.trim().isEmpty) {
-      final name = result.filename.replaceAll(RegExp(r'\.[^.]+$'), '');
-      _titleCtrl.text = name;
-    }
     setState(() {
-      if (!_attached.contains(result.filename)) {
-        _attached.add(result.filename);
+      if (!_attached.any((f) => f.filename == result.filename)) {
+        _attached.add(_AttachedLecture(filename: result.filename));
       }
     });
   }
 
   Future<void> _save() async {
-    if (_titleCtrl.text.trim().isEmpty || _bodyCtrl.text.trim().isEmpty) {
+    final title = _titleCtrl.text.trim();
+    final notes = _bodyCtrl.text.trim();
+    final pdf = _attached.where((f) => f.isPdf).firstOrNull;
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add a lecture title.')),
+      );
+      return;
+    }
+    if (notes.isEmpty && pdf == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Paste notes or add a PDF, then extract.'),
+        ),
+      );
       return;
     }
     setState(() => _saving = true);
@@ -492,14 +534,16 @@ class _LectureLabPageState extends State<LectureLabPage> {
       final subject = _subject;
       final objectives = _parseObjectives();
       await widget.service.saveLecture(
-        title: _titleCtrl.text.trim(),
-        body: _bodyCtrl.text.trim(),
+        title: title,
+        body: notes,
         course: subject?.label,
         subjectId: subject?.id,
         assessmentIds:
             _linkAssessmentId == null ? const [] : [_linkAssessmentId!],
         lectureDate: DateTime.now(),
         learningObjectives: objectives,
+        pdfBytes: pdf?.bytes,
+        pdfFilename: pdf?.filename,
       );
       _titleCtrl.clear();
       _bodyCtrl.clear();
@@ -511,13 +555,21 @@ class _LectureLabPageState extends State<LectureLabPage> {
             content: Text(
               widget.service.supportsAi
                   ? (objectives.isEmpty
-                      ? 'AI extracted topics from your notes'
+                      ? (pdf != null
+                          ? 'AI extracted topics from the PDF'
+                          : 'AI extracted topics from your notes')
                       : 'AI aligned topics to learning objectives')
                   : (objectives.isEmpty
                       ? 'Topics and recall questions created from notes'
                       : 'Topics aligned to learning objectives'),
             ),
           ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
         );
       }
     } finally {

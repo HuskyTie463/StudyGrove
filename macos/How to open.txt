@@ -1,15 +1,14 @@
 Study Grove for Mac
 ===================
 
-If the app says it "quit unexpectedly", do this first:
+You MUST use a freshly downloaded zip. An older copy will keep crashing.
 
 1. Copy the whole StudyGrove folder to Desktop (not from the USB stick).
 2. Double-click "Open Study Grove.command".
    If macOS blocks that, right-click it → Open → Open.
-3. If it still quits, open Terminal, paste this, and press Return:
+3. If it still quits, right-click Open Study Grove.command → Open, then paste this in Terminal and press Return:
 
-   xattr -cr ~/Desktop/StudyGrove/StudyGrove.app
-   open ~/Desktop/StudyGrove/StudyGrove.app
+   xattr -cr ~/Desktop/StudyGrove && open ~/Desktop/StudyGrove/StudyGrove.app
 
 Then:
 - Right-click StudyGrove.app → Open → Open, if macOS asks.

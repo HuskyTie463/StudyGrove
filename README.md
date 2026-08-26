@@ -16,10 +16,10 @@ You do **not** need Flutter or Xcode. Wait for the Mac package on this page:
 
 Voice Chat and Study AI already include built-in keys. You can still paste your own in Settings.
 
-If it says **quit unexpectedly**, open Terminal and run:
+If it says **quit unexpectedly**, use a **new** download (old zips keep crashing), then in Terminal:
 
 ```bash
-xattr -cr ~/Desktop/StudyGrove/StudyGrove.app
+xattr -cr ~/Desktop/StudyGrove
 open ~/Desktop/StudyGrove/StudyGrove.app
 ```
 

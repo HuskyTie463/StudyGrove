@@ -118,17 +118,89 @@ class StudyAiClient {
     required String title,
     required String body,
     List<String> objectives = const [],
+    List<int>? pdfBytes,
+    String? pdfFilename,
   }) async {
     final clipped = body.length > 12000 ? '${body.substring(0, 12000)}…' : body;
     final objBlock = objectives.isEmpty
         ? 'No learning objectives were given. Extract the most testable concepts.'
         : 'Align every topic to one of these learning objectives. Drop material that does not serve them:\n${objectives.map((o) => '- $o').join('\n')}';
-    final raw = await complete(
-      system:
-          'You extract study concepts from lecture notes. Use only the notes. '
-          'If something is not in the notes, omit it. Return JSON only. '
-          '$mathAndConceptInstructions',
-      user: '''
+    final jsonShape = '''
+Return JSON of the form:
+{"topics":[{"title":"concept name in words","objective":"matching objective or null","questions":[{"prompt":"conceptual question in words","answer":"explanation in words, with LaTeX formulas if needed","sourceExcerpt":"short quote from notes"}]}]}
+Give 4–10 topics. Titles are ideas ("Conservation of energy in a closed system"), not symbols.
+Each topic 2–3 questions that test meaning, use, and contrast — not "what is x".
+''';
+    final pdf = pdfBytes;
+    final hasPdf = pdf != null && pdf.isNotEmpty;
+    final hasNotes = body.trim().isNotEmpty;
+    if (!hasPdf && !hasNotes) {
+      throw StudyAiException('Add notes or a PDF to extract.');
+    }
+    final system = hasPdf
+        ? 'You extract study concepts from the attached lecture PDF'
+            '${hasNotes ? ' and any pasted notes' : ''}. Use only that material. '
+            'If something is not in the source, omit it. Return JSON only. '
+            '$mathAndConceptInstructions'
+        : 'You extract study concepts from lecture notes. Use only the notes. '
+            'If something is not in the notes, omit it. Return JSON only. '
+            '$mathAndConceptInstructions';
+
+    late final String raw;
+    if (pdf != null &&
+        pdf.isNotEmpty &&
+        studyAiSettings.provider == StudyAiProvider.anthropic) {
+      if (!studyAiSettings.ready) await studyAiSettings.load();
+      final key = studyAiSettings.apiKey?.trim() ?? '';
+      if (key.isEmpty) {
+        throw StudyAiException('Add your API key in Settings.');
+      }
+      if (pdf.length > 18 * 1024 * 1024) {
+        throw StudyAiException(
+          '${pdfFilename ?? 'That PDF'} is too large to send. Split it or paste the notes.',
+        );
+      }
+      final notesBlock = hasNotes
+          ? 'Also consider these pasted notes:\n$clipped\n'
+          : 'The lecture is in the attached PDF. Use only that document.\n';
+      raw = await _anthropic(
+        key: key,
+        system: system,
+        user: [
+          {
+            'type': 'document',
+            'source': {
+              'type': 'base64',
+              'media_type': 'application/pdf',
+              'data': base64Encode(pdf),
+            },
+          },
+          {
+            'type': 'text',
+            'text': '''
+Lecture title: $title
+File: ${pdfFilename ?? 'lecture.pdf'}
+
+$objBlock
+
+$notesBlock
+$jsonShape
+''',
+          },
+        ],
+        maxTokens: 6000,
+      );
+    } else {
+      if (!hasNotes) {
+        throw StudyAiException(
+          hasPdf
+              ? 'PDF files work with the Anthropic key. Switch provider in Settings, or paste the notes.'
+              : 'Add notes or a PDF to extract.',
+        );
+      }
+      raw = await complete(
+        system: system,
+        user: '''
 Lecture title: $title
 
 $objBlock
@@ -136,12 +208,10 @@ $objBlock
 Notes:
 $clipped
 
-Return JSON of the form:
-{"topics":[{"title":"concept name in words","objective":"matching objective or null","questions":[{"prompt":"conceptual question in words","answer":"explanation in words, with LaTeX formulas if needed","sourceExcerpt":"short quote from notes"}]}]}
-Give 4–10 topics. Titles are ideas ("Conservation of energy in a closed system"), not symbols.
-Each topic 2–3 questions that test meaning, use, and contrast — not "what is x".
+$jsonShape
 ''',
-    );
+      );
+    }
     final map = _asJsonMap(raw);
     final list = (map['topics'] as List?) ?? const [];
     final out = <StudyAiExtractedTopic>[];
