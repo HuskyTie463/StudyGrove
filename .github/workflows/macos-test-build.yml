@@ -1,30 +1,60 @@
-name: macOS test build
+name: macOS USB package
 
 on:
   workflow_dispatch:
   push:
     branches: [main, master]
 
+permissions:
+  contents: write
+
 jobs:
   macos:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.41.2'
           channel: stable
-      - run: flutter pub get
-      - run: flutter build macos --release
-      - name: Zip StudyGrove.app
+          cache: true
+
+      - name: Enable macOS desktop
         run: |
-          APP=$(find build/macos -name 'StudyGrove.app' -o -name 'Study Grove.app' | head -n 1)
+          flutter --version
+          flutter config --enable-macos-desktop
+          flutter precache --macos
+
+      - run: flutter pub get
+
+      - run: flutter build macos --release
+
+      - name: Zip app for USB
+        run: |
+          APP=$(find build/macos -name 'StudyGrove.app' | head -n 1)
           if [ -z "$APP" ]; then
             echo "Built app not found"
             find build/macos -name '*.app'
             exit 1
           fi
-          ditto -c -k --keepParent "$APP" StudyGrove-macos.zip
+          mkdir -p dist/StudyGrove
+          ditto "$APP" dist/StudyGrove/StudyGrove.app
+          cp "macos/How to open.txt" dist/StudyGrove/
+          ditto -c -k --keepParent dist/StudyGrove StudyGrove-macos.zip
+          ls -lh StudyGrove-macos.zip
+
       - uses: actions/upload-artifact@v4
         with:
           name: StudyGrove-macos
           path: StudyGrove-macos.zip
+
+      - name: Put zip on GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete macos-usb --yes || true
+          gh release create macos-usb \
+            --title "Study Grove for Mac (USB)" \
+            --notes "Download StudyGrove-macos.zip, copy it to a USB stick, unzip on the Mac, then right-click StudyGrove.app → Open." \
+            StudyGrove-macos.zip

@@ -1,24 +1,27 @@
 # Study Grove
 
-A study organiser for **Windows** and **Mac**. Voice Chat, Lecture Lab, and the rest of the app live in this folder.
+A study organiser for **Windows** and **Mac**.
 
-## Mac (for testers)
+## Mac (USB stick — easiest)
 
-1. Install [Xcode](https://apps.apple.com/app/xcode/id497799835) from the App Store. Open it once so the extra tools can install.
-2. Install [Flutter](https://docs.flutter.dev/get-started/install/macos/desktop).
-3. In Terminal:
+You do **not** need Flutter or Xcode. Wait for the Mac package on this page:
+
+**https://github.com/HuskyTie463/StudyGrove/releases/tag/macos-usb**
+
+1. Download **StudyGrove-macos.zip**.
+2. Copy that zip onto a USB stick.
+3. On the Mac, unzip it.
+4. Right-click **StudyGrove.app** → **Open** → **Open**.
+5. Allow the microphone when Voice Chat asks.
+6. In Settings, add an OpenAI key so Voice Chat can talk.
+
+If macOS still blocks it, open Terminal and run:
 
 ```bash
-cd study-grove
-flutter pub get
-flutter run -d macos
+xattr -cr ~/Desktop/StudyGrove/StudyGrove.app
 ```
 
-If macOS says the app cannot be opened: right-click it → **Open**.
-
-Allow the microphone when Voice Chat asks.
-
-Voice Chat and Listen need an OpenAI key in **Settings → Listen voices**. Study AI needs an Anthropic or OpenAI key in Settings.
+then right-click → Open again.
 
 ## Windows
 

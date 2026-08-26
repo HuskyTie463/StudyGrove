@@ -1,0 +1,13 @@
+Study Grove for Mac
+===================
+
+1. Copy the whole StudyGrove folder onto the Mac (Desktop is fine).
+2. Right-click StudyGrove.app, choose Open, then click Open.
+   A normal double-click is often blocked until you do this once.
+3. If macOS still says it cannot be opened, open Terminal and run:
+
+   xattr -cr ~/Desktop/StudyGrove/StudyGrove.app
+
+   then right-click StudyGrove.app → Open again.
+4. Allow the microphone when Voice Chat asks.
+5. In Settings, add an OpenAI key so Voice Chat can talk.
