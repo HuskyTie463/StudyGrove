@@ -179,7 +179,7 @@ class _SubjectsPageState extends State<SubjectsPage> {
           return AlertDialog(
             title: const Text('Import timetable'),
             content: SizedBox(
-              width: 480,
+              width: (MediaQuery.sizeOf(ctx).width - 48).clamp(240.0, 480.0),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -335,17 +335,7 @@ class _SubjectsPageState extends State<SubjectsPage> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.menu_book_rounded, color: scheme.primary),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'Subjects',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
+                  const Spacer(),
                   IconButton(
                     tooltip: 'Add subject',
                     onPressed: () => _promptSubject(),

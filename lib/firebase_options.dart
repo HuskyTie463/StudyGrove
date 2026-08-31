@@ -72,10 +72,11 @@ class DefaultFirebaseOptions {
   static const FirebaseOptions macos = windows;
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDMm20gGS51JxFHXVqSuiXHgza70CgDT9Y',
-    appId: '1:34782540195:android:c8e8afc5216e4711c5aa16',
+    apiKey: 'AIzaSyC9E_IEgksqLswI5omHYx4EPHLsT6Y9QCg',
+    appId: '1:34782540195:web:e8a1518bd8945d60c5aa16',
     messagingSenderId: '34782540195',
     projectId: 'study-app-18492',
+    authDomain: 'study-app-18492.firebaseapp.com',
     storageBucket: 'study-app-18492.firebasestorage.app',
     iosBundleId: 'com.adaracurry.studygrove',
   );

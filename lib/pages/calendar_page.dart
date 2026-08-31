@@ -3,6 +3,7 @@ import '../models/models.dart';
 import '../services/event_service.dart';
 import '../services/subject_service.dart';
 import '../ui/shared_ui.dart';
+import '../ui/shell_scope.dart';
 import '../utils/datetime_utils.dart' as du;
 
 class CalendarPage extends StatefulWidget {
@@ -211,7 +212,7 @@ class _CalendarPageState extends State<CalendarPage> {
       du.resolveEndMinutes(du.timeToMinutes(pickedTime), null),
     );
     bool repeatWeekly = false;
-    String? subjectId;
+    String? subjectId = ShellScope.maybeOf(context)?.subjectId;
 
     void ensureEndAfterStart(void Function(void Function()) setDialogState) {
       final startMins = du.timeToMinutes(pickedTime);
@@ -561,7 +562,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       return const Center(child: CircularProgressIndicator());
                     }
 
-                    final events = (snap.data ?? <AppEvent>[])
+                    final events = List<AppEvent>.from(snap.data ?? <AppEvent>[])
                       ..sort(
                         (a, b) => a.startMinutes.compareTo(b.startMinutes),
                       );
@@ -672,24 +673,13 @@ class _CalendarPageState extends State<CalendarPage> {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(18),
-            child: isWide
-                ? Row(
-                    children: [
-                      Expanded(flex: 7, child: calendarPanel()),
-                      const SizedBox(width: 14),
-                      Expanded(flex: 4, child: eventsPanel()),
-                    ],
-                  )
-                : SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        SizedBox(height: 520, child: calendarPanel()),
-                        const SizedBox(height: 14),
-                        SizedBox(height: 360, child: eventsPanel()),
-                        const SizedBox(height: 18),
-                      ],
-                    ),
-                  ),
+            child: Column(
+              children: [
+                Expanded(flex: isWide ? 6 : 5, child: calendarPanel()),
+                const SizedBox(height: 14),
+                Expanded(flex: isWide ? 4 : 4, child: eventsPanel()),
+              ],
+            ),
           ),
         );
       },

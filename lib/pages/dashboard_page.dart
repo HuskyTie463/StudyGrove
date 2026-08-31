@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/dashboard_layout.dart';
 import '../models/models.dart';
 import '../services/dashboard_layout_service.dart';
+import '../ui/math_text.dart';
 import '../ui/shared_ui.dart';
 import '../utils/datetime_utils.dart';
 
@@ -17,6 +18,7 @@ class DashboardPage extends StatefulWidget {
     required this.onToggleTask,
     required this.onAddTask,
     required this.onRemoveTask,
+    required this.onSetTaskUrgency,
     required this.onOpenAssessments,
     required this.onOpacityChanged,
     this.gapSessionPanel,
@@ -31,6 +33,7 @@ class DashboardPage extends StatefulWidget {
   final void Function(int index) onToggleTask;
   final VoidCallback onAddTask;
   final void Function(int index) onRemoveTask;
+  final void Function(int index, TaskUrgency urgency) onSetTaskUrgency;
   final VoidCallback onOpenAssessments;
   final ValueChanged<double> onOpacityChanged;
   final Widget? gapSessionPanel;
@@ -142,6 +145,7 @@ class _DashboardPageState extends State<DashboardPage> {
           onToggle: widget.onToggleTask,
           onAdd: widget.onAddTask,
           onRemove: widget.onRemoveTask,
+          onSetUrgency: widget.onSetTaskUrgency,
           expandList: expandLists,
         );
       case DashboardWidgetType.todayEvents:
@@ -175,17 +179,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (!isWide) {
         return Row(
           children: [
-            Expanded(
-              child: Text(
-                'Study Grove',
-                style: TextStyle(
-                  fontSize: 20,
-                  letterSpacing: 2,
-                  fontWeight: FontWeight.w700,
-                  color: scheme.onSurface,
-                ),
-              ),
-            ),
+            const Spacer(),
             if (!_editMode)
               IconButton(
                 tooltip: 'Edit layout',
@@ -197,16 +191,6 @@ class _DashboardPageState extends State<DashboardPage> {
       }
       return Row(
         children: [
-          Text(
-            'Study Grove',
-            style: TextStyle(
-              fontSize: 20,
-              letterSpacing: 2,
-              fontWeight: FontWeight.w700,
-              color: scheme.onSurface,
-            ),
-          ),
-          const SizedBox(width: 12),
           GreenChip('Tasks complete: $done/${widget.tasks.length}'),
           const SizedBox(width: 10),
           const GreenChip('Today'),
@@ -217,49 +201,6 @@ class _DashboardPageState extends State<DashboardPage> {
               onPressed: _enterEdit,
               icon: const Icon(Icons.dashboard_customize_outlined),
             ),
-          SizedBox(
-            width: 250,
-            child: FrostPanel(
-              opacity: 0.85,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.blur_on, size: 18, color: scheme.onSurface),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Opacity',
-                    style: TextStyle(
-                      color: scheme.onSurface,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Material(
-                      type: MaterialType.transparency,
-                      child: SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: scheme.primary,
-                          inactiveTrackColor:
-                              scheme.onSurface.withValues(alpha: 0.28),
-                          thumbColor: scheme.primary,
-                          overlayColor: scheme.primary.withValues(alpha: 0.18),
-                          trackHeight: 4,
-                        ),
-                        child: Slider(
-                          value: widget.panelOpacity.clamp(0.20, 0.85),
-                          min: 0.20,
-                          max: 0.85,
-                          onChanged: widget.onOpacityChanged,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
       );
     }
@@ -954,6 +895,7 @@ class _TasksPanel extends StatelessWidget {
     required this.onToggle,
     required this.onAdd,
     required this.onRemove,
+    required this.onSetUrgency,
     this.expandList = true,
   });
 
@@ -961,6 +903,7 @@ class _TasksPanel extends StatelessWidget {
   final void Function(int index) onToggle;
   final VoidCallback onAdd;
   final void Function(int index) onRemove;
+  final void Function(int index, TaskUrgency urgency) onSetUrgency;
   final bool expandList;
 
   @override
@@ -988,15 +931,49 @@ class _TasksPanel extends StatelessWidget {
                     children: [
                       Checkbox(value: t.done, onChanged: (_) => onToggle(i)),
                       Expanded(
-                        child: Text(
-                          t.title,
-                          style: TextStyle(
-                            color: t.done
-                                ? scheme.onSurface.withValues(alpha: 0.86)
-                                : scheme.onSurface,
-                            decoration:
-                                t.done ? TextDecoration.lineThrough : null,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              t.title,
+                              style: TextStyle(
+                                color: t.done
+                                    ? scheme.onSurface.withValues(alpha: 0.86)
+                                    : scheme.onSurface,
+                                decoration:
+                                    t.done ? TextDecoration.lineThrough : null,
+                              ),
+                            ),
+                            if (t.isUrgent)
+                              Text(
+                                'Urgent',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: scheme.error,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: t.isUrgent
+                            ? 'Urgent — tap for normal'
+                            : 'Normal — tap for urgent',
+                        onPressed: () => onSetUrgency(
+                          i,
+                          t.isUrgent
+                              ? TaskUrgency.normal
+                              : TaskUrgency.urgent,
+                        ),
+                        icon: Icon(
+                          t.isUrgent
+                              ? Icons.priority_high
+                              : Icons.low_priority,
+                          size: 18,
+                          color: t.isUrgent
+                              ? scheme.error
+                              : scheme.onSurface.withValues(alpha: 0.7),
                         ),
                       ),
                       IconButton(
@@ -1179,7 +1156,7 @@ class _UpcomingAssessmentsPanel extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              Text(a.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              MathText(a.title, style: const TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,

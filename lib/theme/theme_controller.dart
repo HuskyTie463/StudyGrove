@@ -21,6 +21,7 @@ class ThemeController extends ChangeNotifier {
   static const _modeKey = 'visual_mode'; // legacy
   static const _bgKey = 'dashboard_background';
   static const _useBgBlendKey = 'use_bg_blend';
+  static const _opacityKey = 'panel_opacity';
 
   VisualStyleFamily style = VisualStyleFamily.signature;
   ThemeBrightnessPref brightnessPref = ThemeBrightnessPref.dark;
@@ -29,6 +30,7 @@ class ThemeController extends ChangeNotifier {
   SpacingDensity spacing = SpacingDensity.comfortable;
   String backgroundAsset = kDefaultBackgroundAsset;
   bool useBackgroundBlend = false;
+  double panelOpacity = 0.50;
   ColorScheme? _blendScheme;
   bool ready = false;
   String? _uid;
@@ -134,6 +136,7 @@ class ThemeController extends ChangeNotifier {
       useBackgroundBlend = prefs.getBool(_useBgBlendKey) ?? false;
     }
 
+    panelOpacity = prefs.getDouble(_opacityKey) ?? 0.50;
     reducedMotion = prefs.getBool(_motionKey) ?? false;
     contrast = ContrastLevelX.fromStorage(prefs.getString(_contrastKey));
     spacing = SpacingDensityX.fromStorage(prefs.getString(_spacingKey));
@@ -208,6 +211,12 @@ class ThemeController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setPanelOpacity(double value) async {
+    panelOpacity = value.clamp(0.20, 0.85);
+    await _persist();
+    notifyListeners();
+  }
+
   Future<void> setBackground(String asset) async {
     if (!dashboardBackgroundAssets.contains(asset)) return;
     backgroundAsset = asset;
@@ -229,6 +238,7 @@ class ThemeController extends ChangeNotifier {
     await prefs.setString(_spacingKey, spacing.name);
     await prefs.setBool(_useBgBlendKey, useBackgroundBlend);
     await prefs.setString(_bgKey, backgroundAsset);
+    await prefs.setDouble(_opacityKey, panelOpacity);
     // Keep legacy key in sync for older builds.
     await prefs.setString(_modeKey, mode.name);
     await _persistRemote();
@@ -247,6 +257,7 @@ class ThemeController extends ChangeNotifier {
           'spacing': spacing.name,
           'useBackgroundBlend': useBackgroundBlend,
           'backgroundAsset': backgroundAsset,
+          'panelOpacity': panelOpacity,
           'updatedAt': FieldValue.serverTimestamp(),
         },
       }, SetOptions(merge: true));
@@ -272,6 +283,8 @@ class ThemeController extends ChangeNotifier {
       spacing = SpacingDensityX.fromStorage(appearance['spacing'] as String?);
       useBackgroundBlend =
           appearance['useBackgroundBlend'] as bool? ?? useBackgroundBlend;
+      final op = appearance['panelOpacity'];
+      if (op is num) panelOpacity = op.toDouble().clamp(0.20, 0.85);
       final bg = appearance['backgroundAsset'] as String?;
       if (bg != null && dashboardBackgroundAssets.contains(bg)) {
         backgroundAsset = bg;

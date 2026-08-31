@@ -1,11 +1,67 @@
 import 'package:flutter/material.dart';
 import '../utils/datetime_utils.dart';
 
+enum TaskUrgency { normal, urgent }
+
+extension TaskUrgencyX on TaskUrgency {
+  String get label => switch (this) {
+        TaskUrgency.normal => 'Normal',
+        TaskUrgency.urgent => 'Urgent',
+      };
+
+  String get storage => name;
+
+  static TaskUrgency fromStorage(String? value) {
+    return TaskUrgency.values.firstWhere(
+      (e) => e.name == value,
+      orElse: () => TaskUrgency.normal,
+    );
+  }
+}
+
 class TaskItem {
-  TaskItem({required this.id, required this.title, this.done = false});
+  TaskItem({
+    required this.id,
+    required this.title,
+    this.done = false,
+    this.urgency = TaskUrgency.normal,
+    this.subjectId,
+  });
   final String id;
   final String title;
   final bool done;
+  final TaskUrgency urgency;
+  final String? subjectId;
+
+  bool get isUrgent => urgency == TaskUrgency.urgent;
+}
+
+class NoteItem {
+  NoteItem({
+    required this.id,
+    required this.title,
+    required this.body,
+    this.updatedAt,
+    this.subjectId,
+  });
+
+  final String id;
+  final String title;
+  final String body;
+  final DateTime? updatedAt;
+  final String? subjectId;
+}
+
+class StudyDayTotal {
+  StudyDayTotal({
+    required this.subjectId,
+    required this.dayKey,
+    required this.minutes,
+  });
+
+  final String subjectId;
+  final String dayKey;
+  final int minutes;
 }
 
 class Subject {

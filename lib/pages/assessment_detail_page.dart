@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../services/assessment_service.dart';
 import '../services/readiness_engine.dart';
 import '../theme/design_tokens.dart';
+import '../ui/math_text.dart';
 import '../ui/sg_primitives.dart';
 
 class AssessmentDetailPage extends StatefulWidget {
@@ -225,8 +226,15 @@ class _AssessmentDetailPageState extends State<AssessmentDetailPage> {
                 decoration: const InputDecoration(
                   hintText: 'Lecture links, files, reminders…',
                 ),
-                onChanged: (v) => a = a.copyWith(notes: v),
+                onChanged: (v) => setState(() => a = a.copyWith(notes: v)),
               ),
+              if (_notesCtrl.text.trim().isNotEmpty) ...[
+                SizedBox(height: t.gap(1)),
+                MathText(
+                  _notesCtrl.text,
+                  style: TextStyle(color: t.textSecondary, height: 1.45),
+                ),
+              ],
               SizedBox(height: t.gap(1)),
               SgSecondaryButton(
                 label: 'Save notes',

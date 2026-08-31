@@ -1,11 +1,23 @@
 // lib/pages/pomodoro_page.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../models/models.dart';
+import '../services/study_time_service.dart';
+import '../services/subject_service.dart';
 import '../ui/shared_ui.dart';
 
 class PomodoroPage extends StatefulWidget {
-  const PomodoroPage({super.key, required this.panelOpacity});
+  const PomodoroPage({
+    super.key,
+    required this.panelOpacity,
+    required this.subjectService,
+    required this.studyTimeService,
+    this.initialSubjectId,
+  });
   final double panelOpacity;
+  final SubjectService subjectService;
+  final StudyTimeService studyTimeService;
+  final String? initialSubjectId;
 
   @override
   State<PomodoroPage> createState() => _PomodoroPageState();
@@ -19,6 +31,8 @@ class _PomodoroPageState extends State<PomodoroPage> {
   bool onBreak = false;
   int secondsLeft = 25 * 60;
   int cyclesCompleted = 0;
+  String? _subjectId;
+  int _focusElapsedSeconds = 0;
 
   Timer? _timer;
 
@@ -26,6 +40,17 @@ class _PomodoroPageState extends State<PomodoroPage> {
   void initState() {
     super.initState();
     secondsLeft = focusMinutes * 60;
+    _subjectId = widget.initialSubjectId;
+  }
+
+  @override
+  void didUpdateWidget(covariant PomodoroPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialSubjectId != oldWidget.initialSubjectId &&
+        widget.initialSubjectId != null &&
+        !running) {
+      _subjectId = widget.initialSubjectId;
+    }
   }
 
   @override
@@ -44,11 +69,19 @@ class _PomodoroPageState extends State<PomodoroPage> {
 
   void _start() {
     if (running) return;
+    if (_subjectId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a subject before starting.')),
+      );
+      return;
+    }
     setState(() => running = true);
 
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
+
+      if (!onBreak) _focusElapsedSeconds += 1;
 
       if (secondsLeft <= 1) {
         _completeSegment();
@@ -69,20 +102,32 @@ class _PomodoroPageState extends State<PomodoroPage> {
       running = false;
       onBreak = false;
       secondsLeft = focusMinutes * 60;
+      _focusElapsedSeconds = 0;
     });
   }
 
+  Future<void> _logFocusIfNeeded() async {
+    final subjectId = _subjectId;
+    final mins = (_focusElapsedSeconds / 60).round();
+    _focusElapsedSeconds = 0;
+    if (subjectId == null || mins < 1) return;
+    await widget.studyTimeService.addMinutes(
+      subjectId: subjectId,
+      minutes: mins,
+      source: 'pomodoro',
+    );
+  }
+
   void _completeSegment() {
-    // when a segment ends, flip between focus/break
     if (onBreak) {
-      // finished break -> go to focus and count a full cycle
       setState(() {
         onBreak = false;
         secondsLeft = focusMinutes * 60;
         cyclesCompleted += 1;
+        _focusElapsedSeconds = 0;
       });
     } else {
-      // finished focus -> go to break
+      _logFocusIfNeeded();
       setState(() {
         onBreak = true;
         secondsLeft = breakMinutes * 60;
@@ -109,20 +154,43 @@ class _PomodoroPageState extends State<PomodoroPage> {
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width >= 900;
 
-    Widget timerPanel() => FrostPanel(
+    Widget timerPanel(List<Subject> subjects) => FrostPanel(
           opacity: widget.panelOpacity,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Text("Pomodoro", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                  const Spacer(),
                   GreenChip(mode),
                   const SizedBox(width: 8),
                   GreenChip("Cycles: $cyclesCompleted"),
                 ],
               ),
+              const SizedBox(height: 12),
+              if (subjects.isEmpty)
+                Text(
+                  'Add a subject first so this session can be counted on the Time tab.',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.78),
+                  ),
+                )
+              else
+                DropdownButtonFormField<String>(
+                  value: subjects.any((s) => s.id == _subjectId)
+                      ? _subjectId
+                      : null,
+                  decoration: const InputDecoration(
+                    labelText: 'Subject',
+                    hintText: 'Required before start',
+                  ),
+                  items: [
+                    for (final s in subjects)
+                      DropdownMenuItem(value: s.id, child: Text(s.label)),
+                  ],
+                  onChanged: (running || widget.initialSubjectId != null)
+                      ? null
+                      : (id) => setState(() => _subjectId = id),
+                ),
               const SizedBox(height: 18),
               Center(
                 child: Text(
@@ -161,11 +229,14 @@ class _PomodoroPageState extends State<PomodoroPage> {
                       label: onBreak ? "Skip break" : "Skip focus",
                       icon: Icons.skip_next,
                       onPressed: () {
+                        if (!onBreak) {
+                          _logFocusIfNeeded();
+                        }
                         setState(() {
-                          // jump to next segment but don't change running state
                           if (onBreak) {
                             onBreak = false;
                             secondsLeft = focusMinutes * 60;
+                            _focusElapsedSeconds = 0;
                           } else {
                             onBreak = true;
                             secondsLeft = breakMinutes * 60;
@@ -219,28 +290,34 @@ class _PomodoroPageState extends State<PomodoroPage> {
           ),
         );
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: isWide
-            ? Row(
-                children: [
-                  Expanded(flex: 7, child: timerPanel()),
-                  const SizedBox(width: 14),
-                  Expanded(flex: 5, child: settingsPanel()),
-                ],
-              )
-            : SingleChildScrollView(
-                child: Column(
-                  children: [
-                    SizedBox(height: 520, child: timerPanel()),
-                    const SizedBox(height: 14),
-                    settingsPanel(),
-                    const SizedBox(height: 18),
-                  ],
-                ),
-              ),
-      ),
+    return StreamBuilder<List<Subject>>(
+      stream: widget.subjectService.streamSubjects(),
+      builder: (context, snap) {
+        final subjects = snap.data ?? const <Subject>[];
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: isWide
+                ? Row(
+                    children: [
+                      Expanded(flex: 7, child: timerPanel(subjects)),
+                      const SizedBox(width: 14),
+                      Expanded(flex: 5, child: settingsPanel()),
+                    ],
+                  )
+                : SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        SizedBox(height: 560, child: timerPanel(subjects)),
+                        const SizedBox(height: 14),
+                        settingsPanel(),
+                        const SizedBox(height: 18),
+                      ],
+                    ),
+                  ),
+          ),
+        );
+      },
     );
   }
 }

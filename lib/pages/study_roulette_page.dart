@@ -4,12 +4,18 @@ import 'package:flutter/material.dart';
 
 import '../services/study_roulette_engine.dart';
 import '../services/study_roulette_store.dart';
+import '../ui/math_text.dart';
 import '../ui/shared_ui.dart';
 
 class StudyRoulettePage extends StatefulWidget {
-  const StudyRoulettePage({super.key, required this.panelOpacity});
+  const StudyRoulettePage({
+    super.key,
+    required this.panelOpacity,
+    this.subjectLabel,
+  });
 
   final double panelOpacity;
+  final String? subjectLabel;
 
   @override
   State<StudyRoulettePage> createState() => _StudyRoulettePageState();
@@ -151,16 +157,7 @@ class _StudyRoulettePageState extends State<StudyRoulettePage> with TickerProvid
     final scheme = Theme.of(context).colorScheme;
     final c = _current;
     if (c == null) {
-      return FrostPanel(
-        opacity: widget.panelOpacity,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Text(
-            _spinning ? 'Spinning…' : 'Spin the wheel to pull a challenge.',
-            style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.90)),
-          ),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     return FrostPanel(
@@ -173,7 +170,12 @@ class _StudyRoulettePageState extends State<StudyRoulettePage> with TickerProvid
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(c.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                Text(
+                  widget.subjectLabel == null
+                      ? c.title
+                      : '${widget.subjectLabel} · ${c.title}',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
@@ -186,7 +188,7 @@ class _StudyRoulettePageState extends State<StudyRoulettePage> with TickerProvid
               ],
             ),
             const SizedBox(height: 10),
-            Text(c.body, style: TextStyle(height: 1.35, color: scheme.onSurface.withValues(alpha: 0.88))),
+            MathText(c.body, style: TextStyle(height: 1.35, color: scheme.onSurface.withValues(alpha: 0.88))),
             const SizedBox(height: 12),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -259,111 +261,51 @@ class _StudyRoulettePageState extends State<StudyRoulettePage> with TickerProvid
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Study Roulette',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                      color: scheme.onSurface,
-                    ),
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: _editRewards,
-                  icon: const Icon(Icons.card_giftcard, size: 18),
-                  label: const Text('Rewards'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                GreenChip('Mystery: ${_progress}/3 logged'),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Spin picks the challenge. After you actually do it, tap Done — log it three times total to unlock a random reward from your list (Rewards button).',
-                    style: TextStyle(fontSize: 12, color: scheme.onSurface.withValues(alpha: 0.88)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
             Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    Center(
-                      child: SizedBox(
-                        height: 280,
-                        width: 280,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            AnimatedBuilder(
-                              animation: _wheelController,
-                              builder: (context, child) {
-                                return Transform.rotate(
-                                  angle: _angleAnim.value,
-                                  child: child,
-                                );
-                              },
-                              child: CustomPaint(
-                                size: const Size(260, 260),
-                                painter: _FortuneWheelPainter(labels: RouletteDraw.wheelLabels),
-                              ),
-                            ),
-                            Positioned(
-                              top: 4,
-                              child: Icon(
-                                Icons.arrow_drop_down,
-                                size: 36,
-                                color: scheme.onSurface.withValues(alpha: 0.90),
-                              ),
-                            ),
-                          ],
+              child: Center(
+                child: SizedBox(
+                  height: 300,
+                  width: 300,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      AnimatedBuilder(
+                        animation: _wheelController,
+                        builder: (context, child) {
+                          return Transform.rotate(
+                            angle: _angleAnim.value,
+                            child: child,
+                          );
+                        },
+                        child: CustomPaint(
+                          size: const Size(280, 280),
+                          painter: _FortuneWheelPainter(
+                            labels: RouletteDraw.wheelLabels,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    SoftButton(
-                      label: _spinning ? 'Spinning…' : 'Spin the wheel',
-                      icon: Icons.casino,
-                      filled: true,
-                      onPressed: _spinning ? null : _spin,
-                    ),
-                    const SizedBox(height: 16),
-                    _challengeCard(),
-                    const SizedBox(height: 14),
-                    FrostPanel(
-                      opacity: widget.panelOpacity,
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('What you get', style: TextStyle(fontWeight: FontWeight.w800)),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Wild = pick what you’re avoiding. Combo = study block + movement. Move = mostly movement. '
-                              'Other slices are study modes (cards, quiz, notes…). Many study rolls also add a short movement finisher—stop if anything hurts.',
-                              style: TextStyle(fontSize: 12, height: 1.35, color: scheme.onSurface.withValues(alpha: 0.88)),
-                            ),
-                          ],
+                      Positioned(
+                        top: 2,
+                        child: Icon(
+                          Icons.arrow_drop_down,
+                          size: 40,
+                          color: scheme.onSurface.withValues(alpha: 0.85),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
+            SoftButton(
+              label: _spinning ? '…' : 'Spin',
+              icon: Icons.casino,
+              filled: true,
+              onPressed: _spinning ? null : _spin,
+            ),
+            const SizedBox(height: 16),
+            _challengeCard(),
           ],
         ),
       ),
@@ -377,14 +319,14 @@ class _FortuneWheelPainter extends CustomPainter {
   final List<String> labels;
 
   static const _sliceColors = [
-    Color(0xFF1C6E52),
-    Color(0xFF156B54),
-    Color(0xFF0F7A5A),
-    Color(0xFF1B5E4C),
-    Color(0xFF238763),
-    Color(0xFF2AD08F),
-    Color(0xFF427A6B),
-    Color(0xFF145544),
+    Color(0xFFB8E0D2),
+    Color(0xFFF5C6D0),
+    Color(0xFFC9D4F0),
+    Color(0xFFF8E0A8),
+    Color(0xFFD4C4E8),
+    Color(0xFFB8D4E8),
+    Color(0xFFE8D4C4),
+    Color(0xFFC8E8C4),
   ];
 
   @override
@@ -405,11 +347,11 @@ class _FortuneWheelPainter extends CustomPainter {
       final border = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2
-        ..color = Colors.white.withValues(alpha: 0.14);
+        ..color = Colors.white.withValues(alpha: 0.45);
       canvas.drawArc(rect, start, sweep, true, border);
     }
 
-    final hole = Paint()..color = const Color(0xFF060B0A);
+    final hole = Paint()..color = const Color(0xFFF7F4F0);
     canvas.drawCircle(c, r * 0.18, hole);
 
     for (var i = 0; i < n; i++) {
@@ -421,7 +363,11 @@ class _FortuneWheelPainter extends CustomPainter {
       final tp = TextPainter(
         text: TextSpan(
           text: labels[i],
-          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+          style: const TextStyle(
+            color: Color(0xFF3A3A3A),
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         textDirection: TextDirection.ltr,
       )..layout(maxWidth: r * 0.5);

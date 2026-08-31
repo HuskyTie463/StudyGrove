@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../services/event_service.dart';
 import '../services/subject_service.dart';
 import '../ui/shared_ui.dart';
+import '../ui/shell_scope.dart';
 import '../utils/datetime_utils.dart';
 
 class WeeklyPlannerPage extends StatefulWidget {
@@ -124,7 +125,7 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
       initialLocation: '',
       initialTime: now,
       initialEndTime: _defaultEndFor(now),
-      initialSubjectId: null,
+      initialSubjectId: ShellScope.maybeOf(context)?.subjectId,
       allowRepeatToggle: true,
       initialRepeatWeekly: false,
       confirmLabel: 'Add',
@@ -644,13 +645,6 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
 
     return Row(
       children: [
-        Icon(Icons.view_week_rounded, color: scheme.primary),
-        const SizedBox(width: 10),
-        const Text(
-          'Weekly Planner',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(width: 14),
         Expanded(
           child: Text(
             _weekLabel(),
@@ -723,6 +717,70 @@ class _InfoRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _OverlapSlot {
+  const _OverlapSlot({
+    required this.event,
+    required this.column,
+    required this.columnCount,
+  });
+
+  final AppEvent event;
+  final int column;
+  final int columnCount;
+}
+
+/// Pack overlapping events into side-by-side columns (calendar-style).
+List<_OverlapSlot> _placeOverlapping(List<AppEvent> events) {
+  if (events.isEmpty) return const [];
+  final sorted = [...events]
+    ..sort((a, b) {
+      final byStart = a.startMinutes.compareTo(b.startMinutes);
+      if (byStart != 0) return byStart;
+      return a.endMinutes.compareTo(b.endMinutes);
+    });
+
+  final cluster = <({AppEvent event, int column})>[];
+  final columnEnds = <int>[];
+  var clusterEnd = -1;
+  final out = <_OverlapSlot>[];
+
+  void flush() {
+    if (cluster.isEmpty) return;
+    final cols = cluster.fold<int>(1, (m, e) => math.max(m, e.column + 1));
+    for (final item in cluster) {
+      out.add(
+        _OverlapSlot(
+          event: item.event,
+          column: item.column,
+          columnCount: cols,
+        ),
+      );
+    }
+    cluster.clear();
+    columnEnds.clear();
+  }
+
+  for (final event in sorted) {
+    if (cluster.isNotEmpty && event.startMinutes >= clusterEnd) {
+      flush();
+      clusterEnd = -1;
+    }
+    var col = 0;
+    while (col < columnEnds.length && columnEnds[col] > event.startMinutes) {
+      col++;
+    }
+    if (col == columnEnds.length) {
+      columnEnds.add(event.endMinutes);
+    } else {
+      columnEnds[col] = event.endMinutes;
+    }
+    cluster.add((event: event, column: col));
+    clusterEnd = math.max(clusterEnd, event.endMinutes);
+  }
+  flush();
+  return out;
 }
 
 class _DayColumn extends StatelessWidget {
@@ -836,46 +894,57 @@ class _DayColumn extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(6, 8, 6, 12),
               child: SizedBox(
                 height: gridHeight,
-                child: Stack(
-                  children: [
-                    ..._hourLines(context, rangeStart, rangeEnd),
-                    if (events.isEmpty)
-                      Positioned.fill(
-                        child: Center(
-                          child: Text(
-                            isToday ? 'Your day is clear' : 'No events',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: scheme.onSurface.withValues(alpha: 0.86),
-                              fontSize: 12,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final slots = _placeOverlapping(events);
+                    final columns = slots.fold<int>(
+                      1,
+                      (m, s) => math.max(m, s.columnCount),
+                    );
+                    final widthEach = (constraints.maxWidth - 44) / columns;
+                    return Stack(
+                      children: [
+                        ..._hourLines(context, rangeStart, rangeEnd),
+                        if (events.isEmpty)
+                          Positioned.fill(
+                            child: Center(
+                              child: Text(
+                                isToday ? 'Your day is clear' : 'No events',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color:
+                                      scheme.onSurface.withValues(alpha: 0.86),
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                    ...events.map((event) {
-                      final top =
-                          (event.startMinutes - rangeStart) * pxPerMinute;
-                      final naturalHeight =
-                          (event.endMinutes - event.startMinutes) *
+                        ...slots.map((slot) {
+                          final event = slot.event;
+                          final top = (event.startMinutes - rangeStart) *
                               pxPerMinute;
-                      // Keep blocks true to their time span so edges match hour lines.
-                      final height = math.max(22.0, naturalHeight);
-                      return Positioned(
-                        top: top,
-                        left: 44,
-                        right: 0,
-                        height: height,
-                        child: _WeeklyEventCard(
-                          event: event,
-                          height: height,
-                          subjectColor: event.subjectId != null
-                              ? subjectsById[event.subjectId!]?.color
-                              : null,
-                          onTap: () => onOpen(event),
-                        ),
-                      );
-                    }),
-                  ],
+                          final naturalHeight =
+                              (event.endMinutes - event.startMinutes) *
+                                  pxPerMinute;
+                          final height = math.max(22.0, naturalHeight);
+                          return Positioned(
+                            top: top,
+                            left: 44 + slot.column * widthEach + 1,
+                            width: math.max(12.0, widthEach - 2),
+                            height: height,
+                            child: _WeeklyEventCard(
+                              event: event,
+                              height: height,
+                              subjectColor: event.subjectId != null
+                                  ? subjectsById[event.subjectId!]?.color
+                                  : null,
+                              onTap: () => onOpen(event),
+                            ),
+                          );
+                        }),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),

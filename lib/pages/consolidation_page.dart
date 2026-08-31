@@ -21,15 +21,11 @@ import 'voice_chat_page.dart';
 
 enum _Tool {
   quiz,
-  interleave,
   flashcards,
   brainDump,
   feynman,
-  elaborative,
   compare,
-  changeKnob,
   newStory,
-  coverRecall,
   pretest,
   listen,
   voiceTutor,
@@ -64,15 +60,14 @@ class _ConsolidationPageState extends State<ConsolidationPage> {
   @override
   void initState() {
     super.initState();
-    _subjectId = widget.initialSubjectId ??
-        (widget.subjects.isEmpty ? null : widget.subjects.first.id);
+    _subjectId = widget.initialSubjectId;
   }
 
   @override
   void didUpdateWidget(covariant ConsolidationPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_subjectId == null && widget.subjects.isNotEmpty) {
-      _subjectId = widget.subjects.first.id;
+    if (widget.initialSubjectId != oldWidget.initialSubjectId) {
+      _subjectId = widget.initialSubjectId;
     }
   }
 
@@ -159,34 +154,14 @@ class _ConsolidationPageState extends State<ConsolidationPage> {
               return ListView(
                 padding: EdgeInsets.all(t.gap(2.5)),
                 children: [
-                  SgSectionHeader(
-                    eyebrow: 'Consolidation',
-                    title: 'Practice that sticks',
-                    subtitle:
-                        'Retrieval, spacing, interleaving, and explanation — scoped to one subject.',
-                  ),
-                  SizedBox(height: t.gap(2)),
                   if (widget.subjects.isEmpty)
                     Text(
                       'Add a subject first, then capture lectures in Lecture Lab.',
                       style: TextStyle(color: t.textMuted),
-                    )
-                  else
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: widget.subjects.map((s) {
-                        final selected = s.id == _subjectId;
-                        return FilterChip(
-                          label: Text(s.label),
-                          selected: selected,
-                          onSelected: (_) => setState(() => _subjectId = s.id),
-                        );
-                      }).toList(),
                     ),
                   SizedBox(height: t.gap(1)),
                   Text(
-                    '${lectures.length} lecture(s) Â· ${topics.length} concept(s)',
+                    '${lectures.length} lecture(s) · ${topics.length} concept(s)',
                     style: TextStyle(color: t.textMuted, fontSize: 13),
                   ),
                   SizedBox(height: t.gap(2)),
@@ -223,27 +198,9 @@ class _ConsolidationPageState extends State<ConsolidationPage> {
                   ),
                   _toolCard(
                     context,
-                    _Tool.elaborative,
-                    'Why / How',
-                    Icons.help_outline,
-                  ),
-                  _toolCard(
-                    context,
-                    _Tool.interleave,
-                    'Interleaved Mix',
-                    Icons.shuffle,
-                  ),
-                  _toolCard(
-                    context,
                     _Tool.newStory,
                     'Same Engine, New Story',
                     Icons.hub_outlined,
-                  ),
-                  _toolCard(
-                    context,
-                    _Tool.changeKnob,
-                    'Change One Knob',
-                    Icons.tune,
                   ),
                   _toolCard(
                     context,
@@ -262,12 +219,6 @@ class _ConsolidationPageState extends State<ConsolidationPage> {
                     _Tool.pretest,
                     'Pre-test',
                     Icons.play_circle_outline,
-                  ),
-                  _toolCard(
-                    context,
-                    _Tool.coverRecall,
-                    'Cover and Recall',
-                    Icons.visibility_off_outlined,
                   ),
                 ],
               );
@@ -340,15 +291,11 @@ class _ScopePicker extends StatelessWidget {
 
   String get _title => switch (tool) {
         _Tool.quiz => 'Consolidation Quiz',
-        _Tool.interleave => 'Interleaved Mix',
         _Tool.pretest => 'Pre-test',
         _Tool.flashcards => 'Spaced Flashcards',
-        _Tool.coverRecall => 'Cover and Recall',
         _Tool.brainDump => 'Brain Dump',
         _Tool.feynman => 'Feynman Method',
-        _Tool.elaborative => 'Why / How',
         _Tool.compare => 'Compare Two',
-        _Tool.changeKnob => 'Change One Knob',
         _Tool.newStory => 'Same Engine, New Story',
         _Tool.listen => 'Listen',
         _Tool.voiceTutor => 'Voice Chat',
@@ -573,12 +520,11 @@ class _SessionHost extends StatelessWidget {
   Widget _body(BuildContext context) {
     switch (tool) {
       case _Tool.quiz:
-      case _Tool.interleave:
       case _Tool.pretest:
         return _QuizSession(
           topics: topics,
           lectures: lectures,
-          interleaved: tool == _Tool.interleave,
+          interleaved: false,
           pretest: tool == _Tool.pretest,
           progressService: progressService,
         );
@@ -592,24 +538,14 @@ class _SessionHost extends StatelessWidget {
         return _BrainDumpSession(topics: topics, lectures: lectures);
       case _Tool.feynman:
         return _FeynmanSession(topics: topics);
-      case _Tool.elaborative:
-        return _ElaborativeSession(topics: topics);
       case _Tool.compare:
         return _CompareSession(topics: topics);
-      case _Tool.changeKnob:
-        return _KnobSession(
-          topics: topics,
-          lectures: lectures,
-          progressService: progressService,
-        );
       case _Tool.newStory:
         return _TransferSession(
           topics: topics,
           lectures: lectures,
           progressService: progressService,
         );
-      case _Tool.coverRecall:
-        return _CoverRecallSession(lectures: lectures, topics: topics);
       case _Tool.listen:
         return _ListenSession(
           subjectLabel: subject?.label ?? 'this subject',

@@ -3,7 +3,7 @@ import 'package:flutter_math_fork/flutter_math.dart';
 
 import '../services/math_format.dart';
 
-/// Mixed prose + stacked math (fractions as numerator over denominator).
+/// Mixed prose + LaTeX, rendered in document order (inline and block).
 class MathText extends StatelessWidget {
   const MathText(
     this.text, {
@@ -18,10 +18,6 @@ class MathText extends StatelessWidget {
   final TextAlign? textAlign;
   final Color? color;
 
-  static final _block = RegExp(
-    r'\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^$\n]+?)\$|\\\((.+?)\\\)',
-  );
-
   @override
   Widget build(BuildContext context) {
     final prepared = MathFormat.forDisplay(text);
@@ -31,87 +27,78 @@ class MathText extends StatelessWidget {
       height: style?.height ?? 1.45,
       fontFamily: style?.fontFamily ?? inherited.fontFamily,
     );
-    final pieces = _parse(prepared);
+    final pieces = MathFormat.scan(prepared);
     if (pieces.isEmpty) {
       return Text(text, style: base, textAlign: textAlign);
+    }
+    if (pieces.length == 1 && !pieces.first.isMath) {
+      return Text(pieces.first.prose, style: base, textAlign: textAlign);
     }
     if (pieces.length == 1 && pieces.first.isDisplay) {
       return _tex(pieces.first.tex!, base, display: true);
     }
 
-    final spans = <InlineSpan>[];
-    final extras = <Widget>[];
-    for (final piece in pieces) {
-      if (piece.tex == null) {
-        if (piece.prose.isEmpty) continue;
-        spans.add(TextSpan(text: piece.prose, style: base));
-        continue;
-      }
-      if (piece.isDisplay) {
-        extras.add(_tex(piece.tex!, base, display: true));
-        spans.add(const TextSpan(text: '\n'));
-        continue;
-      }
-      spans.add(
-        WidgetSpan(
-          alignment: PlaceholderAlignment.middle,
-          child: _tex(piece.tex!, base, display: false),
+    final rows = <Widget>[];
+    final inline = <InlineSpan>[];
+
+    void flushInline() {
+      if (inline.isEmpty) return;
+      rows.add(
+        Text.rich(
+          TextSpan(style: base, children: List<InlineSpan>.of(inline)),
+          textAlign: textAlign,
         ),
       );
+      inline.clear();
     }
 
+    for (final piece in pieces) {
+      if (!piece.isMath) {
+        if (piece.prose.isEmpty) continue;
+        inline.add(TextSpan(text: piece.prose, style: base));
+        continue;
+      }
+      if (!piece.isDisplay) {
+        inline.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: _tex(piece.tex!, base, display: false),
+          ),
+        );
+        continue;
+      }
+      flushInline();
+      rows.add(_tex(piece.tex!, base, display: true));
+    }
+    flushInline();
+
+    if (rows.length == 1) return rows.first;
     return Column(
       crossAxisAlignment: textAlign == TextAlign.center
           ? CrossAxisAlignment.center
           : CrossAxisAlignment.start,
-      children: [
-        Text.rich(
-          TextSpan(style: base, children: spans),
-          textAlign: textAlign,
-        ),
-        ...extras,
-      ],
+      children: rows,
     );
   }
 
   Widget _tex(String tex, TextStyle style, {required bool display}) {
     final stacked = MathFormat.stackedTex(tex);
-    return Math.tex(
+    final math = Math.tex(
       stacked,
       textStyle: style,
       mathStyle: display ? MathStyle.display : MathStyle.text,
-      onErrorFallback: (_) => Text(tex, style: style),
+      onErrorFallback: (_) => Text(
+        MathFormat.forSpeech('\$$tex\$'),
+        style: style.copyWith(fontStyle: FontStyle.italic),
+      ),
+    );
+    if (!display) return math;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: math,
+      ),
     );
   }
-
-  List<_Piece> _parse(String raw) {
-    final out = <_Piece>[];
-    var cursor = 0;
-    for (final match in _block.allMatches(raw)) {
-      if (match.start > cursor) {
-        out.add(_Piece.prose(raw.substring(cursor, match.start)));
-      }
-      final display = match[1] != null || match[2] != null;
-      final tex = (match[1] ?? match[2] ?? match[3] ?? match[4] ?? '').trim();
-      if (tex.isNotEmpty) {
-        out.add(_Piece.math(tex, display: display));
-      }
-      cursor = match.end;
-    }
-    if (cursor < raw.length) {
-      out.add(_Piece.prose(raw.substring(cursor)));
-    }
-    return out;
-  }
-}
-
-class _Piece {
-  const _Piece._(this.prose, this.tex, this.isDisplay);
-  factory _Piece.prose(String s) => _Piece._(s, null, false);
-  factory _Piece.math(String tex, {required bool display}) =>
-      _Piece._('', tex, display);
-
-  final String prose;
-  final String? tex;
-  final bool isDisplay;
 }

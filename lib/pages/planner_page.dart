@@ -3,6 +3,7 @@ import '../models/models.dart';
 import '../services/event_service.dart';
 import '../services/task_service.dart';
 import '../ui/shared_ui.dart';
+import '../ui/shell_scope.dart';
 import '../utils/datetime_utils.dart';
 
 class PlannerPage extends StatefulWidget {
@@ -13,6 +14,7 @@ class PlannerPage extends StatefulWidget {
     required this.onToggleTask,
     required this.onAddTask,
     required this.onRemoveTask,
+    required this.onSetUrgency,
     required this.eventService,
     required this.taskService,
   });
@@ -23,6 +25,7 @@ class PlannerPage extends StatefulWidget {
   final void Function(int index) onToggleTask;
   final VoidCallback onAddTask;
   final void Function(int index) onRemoveTask;
+  final void Function(int index, TaskUrgency urgency) onSetUrgency;
 
   final EventService eventService;
   final TaskService taskService;
@@ -67,6 +70,7 @@ class _PlannerPageState extends State<PlannerPage> {
   }
 
   Future<void> _promptAddEvent(BuildContext context) async {
+    final scopedSubject = ShellScope.maybeOf(context)?.subjectId;
     final titleCtrl = TextEditingController();
     final locCtrl = TextEditingController();
     TimeOfDay pickedTime = TimeOfDay.now();
@@ -166,6 +170,7 @@ class _PlannerPageState extends State<PlannerPage> {
           time: pickedTime,
           endTime: endTime,
           location: loc.isEmpty ? null : loc,
+          subjectId: scopedSubject,
         );
       } else {
         await widget.eventService.addEvent(
@@ -174,6 +179,7 @@ class _PlannerPageState extends State<PlannerPage> {
           time: pickedTime,
           endTime: endTime,
           location: loc.isEmpty ? null : loc,
+          subjectId: scopedSubject,
         );
       }
       if (mounted) setState(() {});
@@ -222,15 +228,52 @@ class _PlannerPageState extends State<PlannerPage> {
                               children: [
                                 Checkbox(value: t.done, onChanged: (_) => widget.onToggleTask(i)),
                                 Expanded(
-                                  child: Text(
-                                    t.title,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: t.done
-                                          ? scheme.onSurface.withValues(alpha: 0.86)
-                                          : scheme.onSurface,
-                                      decoration: t.done ? TextDecoration.lineThrough : null,
-                                    ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        t.title,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: t.done
+                                              ? scheme.onSurface.withValues(alpha: 0.86)
+                                              : scheme.onSurface,
+                                          decoration: t.done ? TextDecoration.lineThrough : null,
+                                        ),
+                                      ),
+                                      if (t.isUrgent)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 4),
+                                          child: Text(
+                                            'Urgent',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                              color: scheme.error,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: t.isUrgent
+                                      ? 'Urgent — tap for normal'
+                                      : 'Normal — tap for urgent',
+                                  onPressed: () => widget.onSetUrgency(
+                                    i,
+                                    t.isUrgent
+                                        ? TaskUrgency.normal
+                                        : TaskUrgency.urgent,
+                                  ),
+                                  icon: Icon(
+                                    t.isUrgent
+                                        ? Icons.priority_high
+                                        : Icons.low_priority,
+                                    size: 20,
+                                    color: t.isUrgent
+                                        ? scheme.error
+                                        : scheme.onSurface.withValues(alpha: 0.7),
                                   ),
                                 ),
                                 // X delete button for tasks
@@ -258,7 +301,17 @@ class _PlannerPageState extends State<PlannerPage> {
                 child: StreamBuilder<List<AppEvent>>(
                   stream: _getEventsStream(selectedDay),
                   builder: (context, snap) {
+                    final scope = ShellScope.maybeOf(context);
                     final events = List<AppEvent>.from(snap.data ?? const <AppEvent>[])
+                        .where(
+                          (e) => matchesSelectedSubject(
+                            selectedId: scope?.subjectId,
+                            subjects: scope?.subjects ?? const [],
+                            itemSubjectId: e.subjectId,
+                            title: e.title,
+                          ),
+                        )
+                        .toList()
                       ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
 
                     return Column(

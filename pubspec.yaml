@@ -26,6 +26,7 @@ dependencies:
   flutter_tts: ^4.2.3
   audioplayers: ^6.5.0
   file_picker: ^8.1.7
+  path_provider: ^2.1.5
   desktop_drop: ^0.5.0
   archive: ^4.0.7
   syncfusion_flutter_pdf: ^29.2.11
@@ -49,6 +50,7 @@ flutter:
     - assets/backgrounds/
     - assets/studio_garden/
     - assets/motifs/
+    - assets/avatars/
     - assets/app_icon.png
     - assets/assessment_concept_3_studio_garden.png
     - assets/f55af4eb-046a-42f3-887f-6b8c50de1a37.png

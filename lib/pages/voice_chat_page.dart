@@ -18,11 +18,13 @@ class VoiceChatPage extends StatefulWidget {
     required this.lectureLabService,
     required this.subjects,
     this.progressService,
+    this.initialSubjectId,
   });
 
   final LectureLabService lectureLabService;
   final List<Subject> subjects;
   final ProgressMetricsService? progressService;
+  final String? initialSubjectId;
 
   @override
   State<VoiceChatPage> createState() => _VoiceChatPageState();
@@ -36,14 +38,14 @@ class _VoiceChatPageState extends State<VoiceChatPage> {
   @override
   void initState() {
     super.initState();
-    _subjectId = widget.subjects.isEmpty ? null : widget.subjects.first.id;
+    _subjectId = widget.initialSubjectId;
   }
 
   @override
   void didUpdateWidget(covariant VoiceChatPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_subjectId == null && widget.subjects.isNotEmpty) {
-      _subjectId = widget.subjects.first.id;
+    if (widget.initialSubjectId != oldWidget.initialSubjectId) {
+      _subjectId = widget.initialSubjectId;
     }
   }
 
@@ -99,22 +101,6 @@ class _VoiceChatPageState extends State<VoiceChatPage> {
                           Text(
                             'Add a subject, then capture lectures in Lecture Lab.',
                             style: TextStyle(color: t.textMuted, height: 1.4),
-                          )
-                        else
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: widget.subjects.map((s) {
-                              final selected = s.id == _subjectId;
-                              return FilterChip(
-                                label: Text(s.label),
-                                selected: selected,
-                                onSelected: (_) => setState(() {
-                                  _subjectId = s.id;
-                                  _lectureId = null;
-                                }),
-                              );
-                            }).toList(),
                           ),
                         if (lectures.isNotEmpty) ...[
                           SizedBox(height: t.gap(1)),

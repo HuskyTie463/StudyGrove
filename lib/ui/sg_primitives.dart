@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 
 import '../theme/design_tokens.dart';
+import 'math_text.dart';
 
 class SgCard extends StatelessWidget {
   const SgCard({
@@ -215,7 +216,7 @@ class SgSectionHeader extends StatelessWidget {
           ),
         ),
         SizedBox(height: t.gap(1)),
-        Text(
+        MathText(
           title,
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 color: t.textPrimary,
@@ -223,7 +224,7 @@ class SgSectionHeader extends StatelessWidget {
         ),
         if (subtitle != null) ...[
           SizedBox(height: t.gap(1)),
-          Text(
+          MathText(
             subtitle!,
             style: TextStyle(
               color: t.textMuted,

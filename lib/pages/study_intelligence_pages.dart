@@ -15,158 +15,7 @@ import '../services/readiness_engine.dart';
 import '../theme/design_tokens.dart';
 import '../ui/math_text.dart';
 import '../ui/sg_primitives.dart';
-
-class MemoryWeatherPage extends StatelessWidget {
-  const MemoryWeatherPage({
-    super.key,
-    required this.lectureLabService,
-    required this.assessments,
-    this.frictionService,
-    this.progressService,
-    this.onOpenAssessment,
-  });
-
-  final LectureLabService lectureLabService;
-  final List<Assessment> assessments;
-  final FrictionService? frictionService;
-  final ProgressMetricsService? progressService;
-  final void Function(Assessment)? onOpenAssessment;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final engine = const MemoryWeatherEngine();
-
-    return SafeArea(
-      child: StreamBuilder<List<ReviewTopic>>(
-        stream: lectureLabService.streamTopics(),
-        builder: (context, snap) {
-          final topics = snap.data ?? const <ReviewTopic>[];
-          final insight = engine.evaluate(topics: topics);
-          final related = assessments
-              .where((a) => insight.relatedAssessmentIds.contains(a.id))
-              .toList();
-
-          return ListView(
-            padding: EdgeInsets.all(t.gap(2.5)),
-            children: [
-              SgSectionHeader(
-                eyebrow: 'Memory weather',
-                title: insight.headline,
-                subtitle: insight.reason,
-              ),
-              SizedBox(height: t.gap(2)),
-              SgCard(
-                accent: _weatherAccent(t, insight.state),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SgStatusTag(
-                      label: insight.state.label,
-                      color: _weatherAccent(t, insight.state),
-                      icon: Icons.cloud_outlined,
-                    ),
-                    SizedBox(height: t.gap(1.5)),
-                    Text(
-                      insight.nextReviewLabel,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    SizedBox(height: t.gap(1)),
-                    Text(
-                      'Smallest recovery: ~${insight.smallestRecoveryMinutes} min',
-                      style: TextStyle(color: t.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: t.gap(2)),
-              Text('Fading concepts',
-                  style: Theme.of(context).textTheme.titleLarge),
-              SizedBox(height: t.gap(1)),
-              if (insight.fadingTopics.isEmpty)
-                Text('None flagged right now.',
-                    style: TextStyle(color: t.textMuted))
-              else
-                ...insight.fadingTopics.map(
-                  (topic) => Padding(
-                    padding: EdgeInsets.only(bottom: t.gap(1)),
-                    child: SgCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          MathText(topic.title,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w800)),
-                          if (topic.course != null)
-                            Text(topic.course!,
-                                style: TextStyle(color: t.textMuted)),
-                          SizedBox(height: t.gap(1)),
-                          SgSecondaryButton(
-                            label: 'Mark reviewed',
-                            onPressed: () async {
-                              await lectureLabService.recordReview(
-                                topic.id,
-                                topic.confidence ?? 0.55,
-                              );
-                              await progressService?.increment(
-                                recalls: 1,
-                                strengthened: 1,
-                              );
-                              if (context.mounted) {
-                                announceForAccessibility(
-                                  context,
-                                  'Recorded review for ${topic.title}',
-                                );
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              if (related.isNotEmpty) ...[
-                SizedBox(height: t.gap(2)),
-                Text('Related assessments',
-                    style: Theme.of(context).textTheme.titleLarge),
-                SizedBox(height: t.gap(1)),
-                ...related.map(
-                  (a) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(a.title),
-                    subtitle: Text(a.dueLabel),
-                    onTap: onOpenAssessment == null
-                        ? null
-                        : () => onOpenAssessment!(a),
-                  ),
-                ),
-              ],
-              SizedBox(height: t.gap(2)),
-              ExpansionTile(
-                title: const Text('Why this reading?'),
-                children: insight.inspectableSteps
-                    .map(
-                      (s) => ListTile(
-                        dense: true,
-                        title: Text(s, style: TextStyle(fontSize: 13)),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Color _weatherAccent(DesignTokens t, MemoryWeatherState s) => switch (s) {
-        MemoryWeatherState.clear => t.positive,
-        MemoryWeatherState.clouding => t.warning,
-        MemoryWeatherState.fog => t.urgent,
-        MemoryWeatherState.recoveryUnderway => t.secondaryAccent,
-      };
-}
+import '../ui/shell_scope.dart';
 
 class LectureLabPage extends StatefulWidget {
   const LectureLabPage({
@@ -174,11 +23,13 @@ class LectureLabPage extends StatefulWidget {
     required this.service,
     this.subjects = const [],
     this.assessments = const [],
+    this.initialSubjectId,
   });
 
   final LectureLabService service;
   final List<Subject> subjects;
   final List<Assessment> assessments;
+  final String? initialSubjectId;
 
   @override
   State<LectureLabPage> createState() => _LectureLabPageState();
@@ -208,6 +59,20 @@ class _LectureLabPageState extends State<LectureLabPage> {
   bool _importing = false;
   bool _dragging = false;
   final _attached = <_AttachedLecture>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _subjectId = widget.initialSubjectId;
+  }
+
+  @override
+  void didUpdateWidget(covariant LectureLabPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialSubjectId != oldWidget.initialSubjectId) {
+      _subjectId = widget.initialSubjectId;
+    }
+  }
 
   @override
   void dispose() {
@@ -240,12 +105,11 @@ class _LectureLabPageState extends State<LectureLabPage> {
       child: ListView(
         padding: EdgeInsets.all(t.gap(2.5)),
         children: [
-          SgSectionHeader(
-            eyebrow: 'Lecture lab',
-            title: 'From notes to recall',
-            subtitle: widget.service.supportsAi
-                ? 'Using your ${studyAiSettings.provider.label} key to extract concepts.'
-                : 'Add an API key in Settings to extract with AI. Until then, headings and bullets are used.',
+          Text(
+            widget.service.supportsAi
+                ? 'Extract concepts with ${studyAiSettings.provider.label}.'
+                : 'Add an API key in Settings to extract with AI.',
+            style: TextStyle(color: t.textMuted),
           ),
           SizedBox(height: t.gap(2)),
           TextField(
@@ -253,17 +117,26 @@ class _LectureLabPageState extends State<LectureLabPage> {
             decoration: const InputDecoration(labelText: 'Lecture title'),
           ),
           SizedBox(height: t.gap(1)),
-          DropdownButtonFormField<String?>(
-            value: _subjectId,
-            decoration: const InputDecoration(labelText: 'Subject'),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('No subject')),
-              ...widget.subjects.map(
-                (s) => DropdownMenuItem(value: s.id, child: Text(s.label)),
+          if (widget.initialSubjectId == null)
+            DropdownButtonFormField<String?>(
+              value: _subjectId,
+              decoration: const InputDecoration(labelText: 'Subject'),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('No subject')),
+                ...widget.subjects.map(
+                  (s) => DropdownMenuItem(value: s.id, child: Text(s.label)),
+                ),
+              ],
+              onChanged: (v) => setState(() => _subjectId = v),
+            )
+          else
+            Padding(
+              padding: EdgeInsets.only(bottom: t.gap(0.5)),
+              child: Text(
+                _subject?.label ?? 'Selected subject',
+                style: TextStyle(color: t.textMuted),
               ),
-            ],
-            onChanged: (v) => setState(() => _subjectId = v),
-          ),
+            ),
           SizedBox(height: t.gap(1)),
           if (widget.assessments.isNotEmpty)
             DropdownButtonFormField<String?>(
@@ -382,7 +255,17 @@ class _LectureLabPageState extends State<LectureLabPage> {
           StreamBuilder<List<LectureNote>>(
             stream: widget.service.streamLectures(),
             builder: (context, snap) {
-              final list = snap.data ?? const [];
+              final list = (snap.data ?? const <LectureNote>[])
+                  .where(
+                    (l) => matchesSelectedSubject(
+                      selectedId: widget.initialSubjectId,
+                      subjects: widget.subjects,
+                      itemSubjectId: l.subjectId,
+                      course: l.course,
+                      title: l.title,
+                    ),
+                  )
+                  .toList();
               if (list.isEmpty) {
                 return Text('None yet.', style: TextStyle(color: t.textMuted));
               }
@@ -392,6 +275,7 @@ class _LectureLabPageState extends State<LectureLabPage> {
                       (l) => Padding(
                         padding: EdgeInsets.only(bottom: t.gap(1)),
                         child: SgCard(
+                          onTap: () => _openLecture(l),
                           child: ListTile(
                             contentPadding: EdgeInsets.zero,
                             title: MathText(l.title),
@@ -413,6 +297,117 @@ class _LectureLabPageState extends State<LectureLabPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _openLecture(LectureNote lecture) async {
+    if (!mounted) return;
+    final t = context.tokens;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return StreamBuilder<List<ReviewTopic>>(
+          stream: widget.service.streamTopics(),
+          builder: (ctx, snap) {
+            final topics = (snap.data ?? const <ReviewTopic>[])
+                .where(
+                  (topic) =>
+                      topic.sourceLectureId == lecture.id ||
+                      lecture.topicIds.contains(topic.id),
+                )
+                .toList();
+            final objectives = lecture.learningObjectives;
+            final hasObjectives = objectives.isNotEmpty;
+            final hasTopics = topics.isNotEmpty;
+            final summary = hasTopics
+                ? 'This lecture covers ${topics.map((e) => e.title).take(6).join(', ')}${topics.length > 6 ? '…' : ''}.'
+                : null;
+            return AlertDialog(
+              title: MathText(lecture.title),
+              content: SizedBox(
+                width: (MediaQuery.sizeOf(ctx).width - 48).clamp(240.0, 480.0),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (lecture.course != null)
+                        Padding(
+                          padding: EdgeInsets.only(bottom: t.gap(1.5)),
+                          child: Text(
+                            lecture.course!,
+                            style: TextStyle(color: t.textMuted),
+                          ),
+                        ),
+                      Text(
+                        'Summary',
+                        style: Theme.of(ctx).textTheme.titleMedium,
+                      ),
+                      SizedBox(height: t.gap(0.75)),
+                      if (summary != null)
+                        Text(summary, style: const TextStyle(height: 1.4))
+                      else
+                        Text(
+                          widget.service.supportsAi
+                              ? 'No summary yet. Extract with AI from your notes to build one.'
+                              : 'No summary yet. Extract topics from your notes to build one.',
+                          style: TextStyle(color: t.textMuted, height: 1.4),
+                        ),
+                      SizedBox(height: t.gap(2)),
+                      Text(
+                        'Learning objectives',
+                        style: Theme.of(ctx).textTheme.titleMedium,
+                      ),
+                      SizedBox(height: t.gap(0.75)),
+                      if (hasObjectives)
+                        ...objectives.map(
+                          (o) => Padding(
+                            padding: EdgeInsets.only(bottom: t.gap(0.75)),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('•  ', style: TextStyle(color: t.primaryAction)),
+                                Expanded(child: MathText(o)),
+                              ],
+                            ),
+                          ),
+                        )
+                      else if (topics
+                          .where((e) => (e.learningObjective ?? '').isNotEmpty)
+                          .isNotEmpty)
+                        ...topics
+                            .where((e) => (e.learningObjective ?? '').isNotEmpty)
+                            .map(
+                              (e) => Padding(
+                                padding: EdgeInsets.only(bottom: t.gap(0.75)),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('•  ',
+                                        style: TextStyle(color: t.primaryAction)),
+                                    Expanded(child: MathText(e.learningObjective!)),
+                                  ],
+                                ),
+                              ),
+                            )
+                      else
+                        Text(
+                          'No learning objectives stored for this lecture.',
+                          style: TextStyle(color: t.textMuted, height: 1.4),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -706,7 +701,7 @@ class DashboardReadinessStrip extends StatelessWidget {
                 color: t.textMuted,
               )),
           SizedBox(height: t.gap(0.75)),
-          Text(hero.title, style: Theme.of(context).textTheme.titleMedium),
+          MathText(hero.title, style: Theme.of(context).textTheme.titleMedium),
           Text(
             '${e.state.calmLabel} · ${hero.dueLabel}',
             style: TextStyle(color: t.textSecondary, fontSize: 13),
