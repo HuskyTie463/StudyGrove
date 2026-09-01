@@ -23,11 +23,16 @@ xattr -cr ~/Desktop/StudyGrove
 open ~/Desktop/StudyGrove/StudyGrove.app
 ```
 
-## iPhone (TestFlight — no Mac)
+## Mac TestFlight (App Store — do this before iPhone)
 
-You cannot upload an IPA from Windows, and TestFlight’s **Builds** page is not a file-drop box. A GitHub Action on a Mac runner signs Study Grove and sends it to App Store Connect.
+You cannot upload a signed Mac or iPhone build from Windows. TestFlight’s **Builds** page is not a file-drop box.
 
-Follow **[TESTFLIGHT.md](TESTFLIGHT.md)**: create the API key, certificate, and profile in the browser, paste six GitHub secrets, then **Actions → iOS TestFlight → Run workflow**. When that job is green, refresh TestFlight and use **Internal testing**.
+1. In App Store Connect, open Study Grove and **add the macOS platform** (same app, same bundle ID). The record is iOS-only until you do this.
+2. Follow **[TESTFLIGHT.md](TESTFLIGHT.md)** for the API key, **Mac App Distribution** + **Mac Installer** certificates, and Mac App Store profile.
+3. **Actions → App Store TestFlight → Run workflow** with **platform = macos**.
+4. When the job is green, refresh TestFlight → **macOS** → **Internal testing**. Your friend installs TestFlight from the Mac App Store.
+
+iPhone is the same workflow later, with **platform = ios**. The USB zip above is a different, unsigned path and is unchanged.
 
 ## Windows
 
