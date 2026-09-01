@@ -48,3 +48,18 @@ app.*.map.json
 .venv/
 .vs/
 .bundled_keys
+
+# Apple signing material — never commit
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+*.certSigningRequest
+studygrove.key
+studygrove.csr
+studygrove.pem
+studygrove.p12
+distribution.cer
+distribution.p12
+ios/ExportOptions.plist
+ios/ExportOptions.ci.plist

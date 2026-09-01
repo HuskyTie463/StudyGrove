@@ -23,6 +23,12 @@ xattr -cr ~/Desktop/StudyGrove
 open ~/Desktop/StudyGrove/StudyGrove.app
 ```
 
+## iPhone (TestFlight — no Mac)
+
+You cannot upload an IPA from Windows, and TestFlight’s **Builds** page is not a file-drop box. A GitHub Action on a Mac runner signs Study Grove and sends it to App Store Connect.
+
+Follow **[TESTFLIGHT.md](TESTFLIGHT.md)**: create the API key, certificate, and profile in the browser, paste six GitHub secrets, then **Actions → iOS TestFlight → Run workflow**. When that job is green, refresh TestFlight and use **Internal testing**.
+
 ## Windows
 
 ```bash
