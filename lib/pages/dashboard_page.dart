@@ -89,7 +89,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _addPhone(DashboardWidgetType type) {
     if (_layout.phoneRects.containsKey(type)) return;
-    final defaults = DashboardLayoutConfig.defaultPhoneRects()[type];
+    final defaults = DashboardLayoutConfig.suggestedPhoneRects()[type];
     var rect = defaults ??
         const DesktopRect(col: 0, row: 0, colSpan: 12, rowSpan: 3);
     rect = _layout.firstFreeRect(
@@ -105,7 +105,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _addDesktop(DashboardWidgetType type) {
     if (_layout.desktopRects.containsKey(type)) return;
-    final defaults = DashboardLayoutConfig.defaultDesktopRects()[type];
+    final defaults = DashboardLayoutConfig.suggestedDesktopRects()[type];
     var rect = defaults ??
         const DesktopRect(col: 0, row: 0, colSpan: 4, rowSpan: 3);
     rect = _layout.firstFreeRect(
@@ -137,7 +137,11 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  Widget _panelFor(DashboardWidgetType type, {required bool expandLists}) {
+  Widget _panelFor(
+    DashboardWidgetType type, {
+    required bool expandLists,
+    required bool compact,
+  }) {
     switch (type) {
       case DashboardWidgetType.tasks:
         return _TasksPanel(
@@ -152,6 +156,7 @@ class _DashboardPageState extends State<DashboardPage> {
         return _TodayEventsPanel(
           events: widget.todayEvents,
           expandList: expandLists,
+          compact: compact,
         );
       case DashboardWidgetType.upcomingAssessments:
         return _UpcomingAssessmentsPanel(
@@ -325,11 +330,13 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: isWide
+                ? const EdgeInsets.all(18)
+                : const EdgeInsets.fromLTRB(14, 6, 14, 10),
             child: Column(
               children: [
                 header(),
-                const SizedBox(height: 10),
+                SizedBox(height: isWide ? 10 : 4),
                 editBubbleRow(phone: !isWide),
                 Expanded(
                   child: _DashboardGridCanvas(
@@ -351,11 +358,14 @@ class _DashboardPageState extends State<DashboardPage> {
                       });
                       _persist();
                     },
-                    panelBuilder: (type) =>
-                        _panelFor(type, expandLists: true),
+                    panelBuilder: (type) => _panelFor(
+                      type,
+                      expandLists: true,
+                      compact: !isWide,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: isWide ? 10 : 6),
                 footer(),
               ],
             ),
@@ -579,7 +589,7 @@ class _DesktopWidgetFrameState extends State<_DesktopWidgetFrame> {
       width: width,
       height: height,
       child: Padding(
-        padding: const EdgeInsets.all(6),
+        padding: EdgeInsets.all(widget.touchFriendly ? 4 : 6),
         child: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -589,6 +599,9 @@ class _DesktopWidgetFrameState extends State<_DesktopWidgetFrame> {
                 onSecondaryTap: widget.onEnterEdit,
                 child: FrostPanel(
                   opacity: widget.panelOpacity,
+                  padding: widget.touchFriendly
+                      ? const EdgeInsets.fromLTRB(12, 8, 12, 8)
+                      : const EdgeInsets.all(16),
                   child: widget.child,
                 ),
               ),
@@ -1024,41 +1037,52 @@ class _TodayEventsPanel extends StatelessWidget {
   const _TodayEventsPanel({
     required this.events,
     this.expandList = true,
+    this.compact = false,
   });
 
   final List<AppEvent> events;
   final bool expandList;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final cardPad = compact ? 8.0 : 12.0;
+    final gap = compact ? 6.0 : 10.0;
     final body = events.isEmpty
         ? Text(
             'No events.',
-            style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.84)),
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: 0.84),
+              fontSize: compact ? 13 : 14,
+            ),
           )
         : ListView(
             shrinkWrap: !expandList,
+            padding: EdgeInsets.zero,
             physics: expandList
                 ? const AlwaysScrollableScrollPhysics()
                 : const NeverScrollableScrollPhysics(),
             children: events
                 .map(
                   (e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
+                    padding: EdgeInsets.only(bottom: gap),
                     child: Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: cardPad,
+                        vertical: compact ? 8 : 12,
+                      ),
                       decoration: BoxDecoration(
                         color: scheme.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
+                        borderRadius: BorderRadius.circular(compact ? 12 : 16),
+                        border: BorderAll(
                           color: scheme.outline.withValues(alpha: 0.16),
                         ),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.circle, size: 10, color: scheme.primary),
-                          const SizedBox(width: 10),
+                          Icon(Icons.circle, size: compact ? 8 : 10, color: scheme.primary),
+                          SizedBox(width: compact ? 8 : 10),
                           Text(
                             formatTimeRange(
                               context,
@@ -1071,7 +1095,7 @@ class _TodayEventsPanel extends StatelessWidget {
                               fontSize: 12,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: compact ? 8 : 12),
                           if (e.isRecurring)
                             Padding(
                               padding: const EdgeInsets.only(right: 6),
@@ -1086,6 +1110,7 @@ class _TodayEventsPanel extends StatelessWidget {
                             child: Text(
                               e.title,
                               overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: compact ? 13 : 14),
                             ),
                           ),
                         ],
@@ -1099,15 +1124,15 @@ class _TodayEventsPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'TODAY',
           style: TextStyle(
             letterSpacing: 2,
             fontWeight: FontWeight.w700,
-            fontSize: 13,
+            fontSize: compact ? 12 : 13,
           ),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: compact ? 6 : 10),
         if (expandList) Expanded(child: body) else body,
       ],
     );

@@ -114,8 +114,9 @@ class DashboardLayoutConfig {
   static const int minColSpan = 3;
   static const int minRowSpan = 2;
 
-  static Map<DashboardWidgetType, DesktopRect> defaultPhoneRects() => {
-        DashboardWidgetType.gapSession: const DesktopRect(
+  /// Size/placement used when the user adds a widget (not the default home).
+  static Map<DashboardWidgetType, DesktopRect> suggestedPhoneRects() => {
+        DashboardWidgetType.todayEvents: const DesktopRect(
           col: 0,
           row: 0,
           colSpan: 12,
@@ -127,7 +128,13 @@ class DashboardLayoutConfig {
           colSpan: 12,
           rowSpan: 3,
         ),
-        DashboardWidgetType.todayEvents: const DesktopRect(
+        DashboardWidgetType.gapSession: const DesktopRect(
+          col: 0,
+          row: 5,
+          colSpan: 12,
+          rowSpan: 2,
+        ),
+        DashboardWidgetType.upcomingAssessments: const DesktopRect(
           col: 0,
           row: 5,
           colSpan: 12,
@@ -135,7 +142,16 @@ class DashboardLayoutConfig {
         ),
       };
 
-  static Map<DashboardWidgetType, DesktopRect> defaultDesktopRects() => {
+  /// Phone home: compact Today only. Gap session and Today's queue stay addable.
+  static Map<DashboardWidgetType, DesktopRect> defaultPhoneRects() {
+    final suggested = suggestedPhoneRects();
+    return {
+      DashboardWidgetType.todayEvents:
+          suggested[DashboardWidgetType.todayEvents]!,
+    };
+  }
+
+  static Map<DashboardWidgetType, DesktopRect> suggestedDesktopRects() => {
         DashboardWidgetType.gapSession: const DesktopRect(
           col: 0,
           row: 0,
@@ -144,9 +160,9 @@ class DashboardLayoutConfig {
         ),
         DashboardWidgetType.tasks: const DesktopRect(
           col: 0,
-          row: 2,
+          row: 0,
           colSpan: 5,
-          rowSpan: 6,
+          rowSpan: 8,
         ),
         DashboardWidgetType.todayEvents: const DesktopRect(
           col: 8,
@@ -161,6 +177,18 @@ class DashboardLayoutConfig {
           rowSpan: 4,
         ),
       };
+
+  /// Desktop home omits Gap session; it remains available via Add widget.
+  static Map<DashboardWidgetType, DesktopRect> defaultDesktopRects() {
+    final suggested = suggestedDesktopRects();
+    return {
+      DashboardWidgetType.tasks: suggested[DashboardWidgetType.tasks]!,
+      DashboardWidgetType.todayEvents:
+          suggested[DashboardWidgetType.todayEvents]!,
+      DashboardWidgetType.upcomingAssessments:
+          suggested[DashboardWidgetType.upcomingAssessments]!,
+    };
+  }
 
   static DashboardLayoutConfig defaults() {
     return DashboardLayoutConfig(

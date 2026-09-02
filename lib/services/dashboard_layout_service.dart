@@ -6,6 +6,8 @@ class DashboardLayoutService {
   static const _phoneKey = 'dashboard_layout_phone_v2';
   static const _desktopKey = 'dashboard_layout_desktop_v1';
   static const _legacyPhoneKey = 'dashboard_layout_phone_v1';
+  static const _widgetDefaultsMigrationKey =
+      'dashboard_layout_widget_defaults_v3';
 
   Future<DashboardLayoutConfig> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -14,6 +16,7 @@ class DashboardLayoutService {
     final desktopRaw = prefs.getString(_desktopKey);
 
     if (phoneRaw == null && desktopRaw == null) {
+      await prefs.setBool(_widgetDefaultsMigrationKey, true);
       return DashboardLayoutConfig.defaults();
     }
 
@@ -38,28 +41,35 @@ class DashboardLayoutService {
       phoneRects: phoneRects,
       desktopRects: desktopRects,
     );
-    _ensureGapSession(config);
+    final migrated = prefs.getBool(_widgetDefaultsMigrationKey) ?? false;
+    if (!migrated) {
+      _applyV3WidgetDefaults(config);
+      await prefs.setBool(_widgetDefaultsMigrationKey, true);
+      await save(config);
+    }
     return config;
   }
 
-  void _ensureGapSession(DashboardLayoutConfig config) {
-    if (!config.phoneRects.containsKey(DashboardWidgetType.gapSession)) {
-      final rect = config.firstFreeRect(
-            config.phoneRects,
-            colSpan: 12,
-            rowSpan: 2,
-          ) ??
-          const DesktopRect(col: 0, row: 0, colSpan: 12, rowSpan: 2);
-      config.phoneRects[DashboardWidgetType.gapSession] = rect;
-    }
-    if (!config.desktopRects.containsKey(DashboardWidgetType.gapSession)) {
-      final rect = config.firstFreeRect(
-            config.desktopRects,
-            colSpan: 5,
-            rowSpan: 2,
-          ) ??
-          const DesktopRect(col: 0, row: 0, colSpan: 5, rowSpan: 2);
-      config.desktopRects[DashboardWidgetType.gapSession] = rect;
+  /// One-time: drop auto Gap session / phone queue, compact phone Today.
+  void _applyV3WidgetDefaults(DashboardLayoutConfig config) {
+    config.phoneRects.remove(DashboardWidgetType.gapSession);
+    config.phoneRects.remove(DashboardWidgetType.tasks);
+    config.phoneRects[DashboardWidgetType.todayEvents] =
+        DashboardLayoutConfig.suggestedPhoneRects()[
+            DashboardWidgetType.todayEvents]!;
+
+    config.desktopRects.remove(DashboardWidgetType.gapSession);
+    const oldDesktopTasks = DesktopRect(
+      col: 0,
+      row: 2,
+      colSpan: 5,
+      rowSpan: 6,
+    );
+    final tasks = config.desktopRects[DashboardWidgetType.tasks];
+    if (tasks == oldDesktopTasks) {
+      config.desktopRects[DashboardWidgetType.tasks] =
+          DashboardLayoutConfig.suggestedDesktopRects()[
+              DashboardWidgetType.tasks]!;
     }
   }
 
