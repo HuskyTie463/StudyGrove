@@ -229,9 +229,9 @@ jobs:
         run: |
           set -euo pipefail
           BUILD_NUMBER="${{ github.run_number }}"
-          # Apple already processed 1.0.6 (2) and (3). Never reuse those.
-          if [ "$BUILD_NUMBER" -lt 4 ]; then
-            BUILD_NUMBER=4
+          # Apple already processed 1.0.6 (2), (3), and (4). Never reuse those.
+          if [ "$BUILD_NUMBER" -lt 5 ]; then
+            BUILD_NUMBER=5
           fi
           echo "CFBundleVersion=$BUILD_NUMBER"
           DART_DEFINES=()

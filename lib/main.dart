@@ -33,9 +33,13 @@ Future<void> main() async {
 Future<bool> initializeFirebaseSafely() async {
   if (firebaseReady) return true;
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    // Native macOS already configures the default FIRApp during plugin
+    // registration. A second default-app configure also aborts.
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
     firebaseReady = true;
     return true;
   } catch (e, st) {
