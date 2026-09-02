@@ -1075,7 +1075,7 @@ class _TodayEventsPanel extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: scheme.primary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(compact ? 12 : 16),
-                        border: BorderAll(
+                        border: Border.all(
                           color: scheme.outline.withValues(alpha: 0.16),
                         ),
                       ),
