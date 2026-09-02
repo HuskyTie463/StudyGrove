@@ -140,7 +140,66 @@ jobs:
           echo "Installer identity: $INSTALLER_IDENTITY"
 
           ENT="$RUNNER_TEMP/AppStore.entitlements"
-          sed "s/\$(AppIdentifierPrefix)/${TEAM_ID}./g" macos/Runner/AppStore.entitlements > "$ENT"
+          HELPER_ENT="$RUNNER_TEMP/AppStore-helper.entitlements"
+          export TEAM_ID
+          export APP_ID
+          python3 - <<'PY'
+          import os
+          import plistlib
+          from pathlib import Path
+
+          team_id = os.environ["TEAM_ID"]
+          app_id = os.environ.get("APP_ID") or f"{team_id}.com.adaracurry.studygrove"
+          profile = plistlib.loads((Path(os.environ["RUNNER_TEMP"]) / "mac-profile.plist").read_bytes())
+          profile_ents = dict(profile.get("Entitlements") or {})
+
+          src = Path("macos/Runner/AppStore.entitlements").read_text()
+          src = src.replace("$(AppIdentifierPrefix)", f"{team_id}.")
+          src = src.replace("$(DEVELOPMENT_TEAM)", team_id)
+          merged = plistlib.loads(src.encode())
+
+          for key, value in profile_ents.items():
+              if key in ("get-task-allow", "com.apple.security.get-task-allow"):
+                  continue
+              if key == "application-identifier":
+                  merged["com.apple.application-identifier"] = value
+              else:
+                  merged[key] = value
+
+          merged["com.apple.application-identifier"] = (
+              merged.get("com.apple.application-identifier") or app_id
+          )
+          merged["com.apple.developer.team-identifier"] = team_id
+          merged["com.apple.security.app-sandbox"] = True
+
+          out = Path(os.environ["RUNNER_TEMP"]) / "AppStore.entitlements"
+          with out.open("wb") as fh:
+              plistlib.dump(merged, fh, fmt=plistlib.FMT_XML)
+
+          helper = dict(merged)
+          helper.pop("com.apple.application-identifier", None)
+          helper.pop("com.apple.developer.team-identifier", None)
+          helper.pop("keychain-access-groups", None)
+          helper_path = Path(os.environ["RUNNER_TEMP"]) / "AppStore-helper.entitlements"
+          with helper_path.open("wb") as fh:
+              plistlib.dump(helper, fh, fmt=plistlib.FMT_XML)
+
+          print("Merged MAS entitlements:")
+          for key in sorted(merged):
+              print(f"  {key} = {merged[key]!r}")
+          PY
+
+          SIGNED_APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.application-identifier' "$ENT")"
+          SIGNED_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$ENT")"
+          echo "codesign application-identifier=$SIGNED_APP_ID"
+          echo "codesign team-identifier=$SIGNED_TEAM"
+          case "$SIGNED_APP_ID" in
+            "${TEAM_ID}.com.adaracurry.studygrove") ;;
+            *)
+              echo "Merged entitlements are missing ${TEAM_ID}.com.adaracurry.studygrove"
+              exit 1
+              ;;
+          esac
 
           umask 077
           printf '%s' "$KEYCHAIN_PASSWORD" > "$RUNNER_TEMP/keychain.pw"
@@ -149,6 +208,7 @@ jobs:
           echo "MAC_APP_IDENTITY=$APP_IDENTITY" >> "$GITHUB_ENV"
           echo "MAC_INSTALLER_IDENTITY=$INSTALLER_IDENTITY" >> "$GITHUB_ENV"
           echo "MAC_ENTITLEMENTS=$ENT" >> "$GITHUB_ENV"
+          echo "MAC_HELPER_ENTITLEMENTS=$HELPER_ENT" >> "$GITHUB_ENV"
           echo "ASC_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
           security find-identity -v "$KEYCHAIN_PATH"
 
@@ -167,6 +227,11 @@ jobs:
         run: |
           set -euo pipefail
           BUILD_NUMBER="${{ github.run_number }}"
+          # Apple already processed 1.0.6 (2). Never reuse that CFBundleVersion.
+          if [ "$BUILD_NUMBER" -lt 3 ]; then
+            BUILD_NUMBER=3
+          fi
+          echo "CFBundleVersion=$BUILD_NUMBER"
           DART_DEFINES=()
           if [ -n "${BUNDLED_STUDY_AI_KEY:-}" ]; then
             DART_DEFINES+=(--dart-define="BUNDLED_STUDY_AI_KEY=$BUNDLED_STUDY_AI_KEY")
@@ -198,7 +263,11 @@ jobs:
           cp "$MAC_PP_PATH" "$APP/Contents/embedded.provisionprofile"
           /usr/libexec/PlistBuddy -c 'Set :LSApplicationCategoryType public.app-category.education' "$APP/Contents/Info.plist" \
             || /usr/libexec/PlistBuddy -c 'Add :LSApplicationCategoryType string public.app-category.education' "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Set :ITSAppUsesNonExemptEncryption false' "$APP/Contents/Info.plist" \
+            || /usr/libexec/PlistBuddy -c 'Add :ITSAppUsesNonExemptEncryption bool false' "$APP/Contents/Info.plist"
           echo "LSApplicationCategoryType=$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$APP/Contents/Info.plist")"
+          echo "CFBundleVersion=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
+          echo "ITSAppUsesNonExemptEncryption=$(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$APP/Contents/Info.plist")"
           security unlock-keychain -p "$(cat "$RUNNER_TEMP/keychain.pw")" "$KEYCHAIN_PATH"
 
           if [ -d "$APP/Contents/Frameworks" ]; then
@@ -209,16 +278,29 @@ jobs:
               codesign --force --options runtime --timestamp --sign "$MAC_APP_IDENTITY" "$f"
             done
           fi
+          # Nested helpers must not claim the app's application-identifier (ITMS-90885).
           find "$APP/Contents" -type d -name '*.app' | while read -r helper; do
-            [ "$helper" = "$APP" ] && continue
-            codesign --force --options runtime --timestamp --entitlements "$MAC_ENTITLEMENTS" --sign "$MAC_APP_IDENTITY" "$helper"
+            codesign --force --options runtime --timestamp \
+              --entitlements "$MAC_HELPER_ENTITLEMENTS" \
+              --sign "$MAC_APP_IDENTITY" "$helper"
           done
 
           codesign --force --options runtime --timestamp \
+            --identifier com.adaracurry.studygrove \
             --entitlements "$MAC_ENTITLEMENTS" \
             --sign "$MAC_APP_IDENTITY" \
             "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
+
+          codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/signed.entitlements" 2>/dev/null || true
+          echo "==== signed app entitlements ===="
+          cat "$RUNNER_TEMP/signed.entitlements" || true
+          EXPECTED_APP_ID="${ASC_TEAM_ID}.com.adaracurry.studygrove"
+          if ! grep -a -F -q "$EXPECTED_APP_ID" "$RUNNER_TEMP/signed.entitlements"; then
+            echo "ITMS-90886 guard: signed app is missing application-identifier $EXPECTED_APP_ID"
+            exit 1
+          fi
+          echo "Signed application-identifier $EXPECTED_APP_ID is present."
 
           PKG="$RUNNER_TEMP/StudyGrove.pkg"
           productbuild --component "$APP" /Applications --sign "$MAC_INSTALLER_IDENTITY" "$PKG"
