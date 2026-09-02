@@ -54,17 +54,24 @@ jobs:
           ditto "$APP" dist/StudyGrove/StudyGrove.app
           cp "macos/How to open.txt" dist/StudyGrove/
           cp "macos/Open Study Grove.command" dist/StudyGrove/
-          cp "macos/Runner/Release.entitlements" dist/StudyGrove/Release.entitlements
+          cp "macos/Usb.entitlements" dist/StudyGrove/Usb.entitlements
           chmod +x "dist/StudyGrove/Open Study Grove.command"
           # Windows checkouts can leave CRLF, which breaks double-click .command on Mac.
           perl -pi -e 's/\r\n|\r/\n/g' \
             "dist/StudyGrove/Open Study Grove.command" \
             "dist/StudyGrove/How to open.txt"
+          if grep -q '\$(' macos/Usb.entitlements macos/Runner/Release.entitlements; then
+            echo "ERROR: USB entitlements still contain Xcode \$(...) variables."
+            echo "codesign would embed them literally and the Mac app can quit on launch."
+            exit 1
+          fi
           xattr -cr dist/StudyGrove || true
-          # Re-sign ad-hoc WITH entitlements. Signing without them strips JIT /
-          # library-validation exceptions and Gatekeeper SIGKILLs the USB copy.
+          # Re-sign ad-hoc WITH USB entitlements. Signing without JIT /
+          # library-validation exceptions lets Gatekeeper SIGKILL the copy.
+          # Do not use Release.entitlements here: it used to contain
+          # $(AppIdentifierPrefix), which codesign cannot expand.
           codesign --force --deep --sign - \
-            --entitlements macos/Runner/Release.entitlements \
+            --entitlements macos/Usb.entitlements \
             dist/StudyGrove/StudyGrove.app
           codesign --force --sign - "dist/StudyGrove/Open Study Grove.command" || true
           echo "==== binary arch ===="
@@ -76,7 +83,11 @@ jobs:
             exit 1
           fi
           echo "==== entitlements ===="
-          codesign -d --entitlements - dist/StudyGrove/StudyGrove.app || true
+          codesign -d --entitlements - dist/StudyGrove/StudyGrove.app | tee /tmp/usb-ents.txt || true
+          if grep -q '\$(' /tmp/usb-ents.txt; then
+            echo "ERROR: signed USB app still has unexpanded \$(...) entitlements."
+            exit 1
+          fi
           echo "==== nested binaries ===="
           find dist/StudyGrove/StudyGrove.app/Contents -type f \( -name '*.dylib' -o -name '*.so' \) \
             | while read -r f; do
@@ -97,5 +108,5 @@ jobs:
           gh release delete macos-usb --yes || true
           gh release create macos-usb \
             --title "Study Grove for Mac (USB)" \
-            --notes "Download a FRESH StudyGrove-macos.zip (old copies keep crashing). Copy the StudyGrove folder to the Mac Desktop, then double-click Open Study Grove.command. Do not open the .app from the USB stick. Fallback: xattr -cr ~/Desktop/StudyGrove && open ~/Desktop/StudyGrove/StudyGrove.app" \
+            --notes "Download a FRESH StudyGrove-macos.zip (old copies keep crashing). Copy the StudyGrove folder to the Mac Desktop, then double-click Open Study Grove.command. Do not open the .app from the USB stick. If macOS blocks the command, right-click it → Open. Fallback: xattr -cr ~/Desktop/StudyGrove && open ~/Desktop/StudyGrove/StudyGrove.app" \
             StudyGrove-macos.zip

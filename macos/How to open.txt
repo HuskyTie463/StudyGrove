@@ -10,6 +10,11 @@ You MUST use a freshly downloaded zip. An older copy will keep crashing.
 
    xattr -cr ~/Desktop/StudyGrove && open ~/Desktop/StudyGrove/StudyGrove.app
 
+If macOS says "quit unexpectedly":
+- In that dialog, click Report (or Show Details) and copy the text.
+- Or open Console, choose Crash Reports, click StudyGrove, and copy that report.
+- Please also say whether the Mac has an Apple chip (Apple M1/M2/M3/M4) or Intel.
+
 Then:
 - Right-click StudyGrove.app → Open → Open, if macOS asks.
 - Allow the microphone when Voice Chat asks.

@@ -180,6 +180,8 @@ jobs:
           helper.pop("com.apple.application-identifier", None)
           helper.pop("com.apple.developer.team-identifier", None)
           helper.pop("keychain-access-groups", None)
+          helper["com.apple.security.app-sandbox"] = True
+          helper["com.apple.security.inherit"] = True
           helper_path = Path(os.environ["RUNNER_TEMP"]) / "AppStore-helper.entitlements"
           with helper_path.open("wb") as fh:
               plistlib.dump(helper, fh, fmt=plistlib.FMT_XML)
@@ -227,9 +229,9 @@ jobs:
         run: |
           set -euo pipefail
           BUILD_NUMBER="${{ github.run_number }}"
-          # Apple already processed 1.0.6 (2). Never reuse that CFBundleVersion.
-          if [ "$BUILD_NUMBER" -lt 3 ]; then
-            BUILD_NUMBER=3
+          # Apple already processed 1.0.6 (2) and (3). Never reuse those.
+          if [ "$BUILD_NUMBER" -lt 4 ]; then
+            BUILD_NUMBER=4
           fi
           echo "CFBundleVersion=$BUILD_NUMBER"
           DART_DEFINES=()
@@ -278,6 +280,14 @@ jobs:
               codesign --force --options runtime --timestamp --sign "$MAC_APP_IDENTITY" "$f"
             done
           fi
+          # Native assets (SoLoud, etc.) can land outside Frameworks.
+          # Hardened Runtime kills unsigned Mach-O files at launch.
+          MAIN_BIN="$APP/Contents/MacOS/StudyGrove"
+          find "$APP/Contents" -type f ! -path "$MAIN_BIN" | while read -r f; do
+            if file -b "$f" | grep -q 'Mach-O'; then
+              codesign --force --options runtime --timestamp --sign "$MAC_APP_IDENTITY" "$f"
+            fi
+          done
           # Nested helpers must not claim the app's application-identifier (ITMS-90885).
           find "$APP/Contents" -type d -name '*.app' | while read -r helper; do
             codesign --force --options runtime --timestamp \

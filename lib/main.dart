@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'firebase_options.dart';
 import 'pages/auth_login_page.dart';
@@ -13,12 +14,19 @@ bool firebaseReady = false;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // TestFlight / Mac App Store is sandboxed. Downloading fonts at first
+  // paint can write outside the container and macOS then kills the app
+  // ("quit unexpectedly"). USB builds hid this because sandbox is off.
+  GoogleFonts.config.allowRuntimeFetching = false;
   // Load appearance before first paint to avoid theme flash.
-  // Do not initialize Firebase before runApp: the macOS C++ SDK can abort
-  // the process (missing plist / bad app id), which Dart try/catch cannot
-  // stop, and macOS then shows "StudyGrove quit unexpectedly".
-  await themeController.load();
-  await studyAiSettings.load();
+  // Do not initialize Firebase or the keychain before runApp: the macOS
+  // SDK can abort the process (bad app id / keychain), which Dart
+  // try/catch cannot stop, and macOS then shows "StudyGrove quit unexpectedly".
+  try {
+    await themeController.load();
+  } catch (e, st) {
+    debugPrint('Theme failed to load: $e\n$st');
+  }
   runApp(const OrganiserApp());
 }
 
@@ -77,6 +85,11 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _startFirebase() async {
+    try {
+      await studyAiSettings.load();
+    } catch (e, st) {
+      debugPrint('Study AI settings failed to load: $e\n$st');
+    }
     await initializeFirebaseSafely();
     if (mounted) setState(() => _starting = false);
   }

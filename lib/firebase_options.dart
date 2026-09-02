@@ -68,8 +68,17 @@ class DefaultFirebaseOptions {
     measurementId: 'G-J3ZFQ0HRL6',
   );
 
-  /// Desktop Firebase C++ SDK uses the same web-style app as Windows.
-  static const FirebaseOptions macos = windows;
+  /// Same web-style Firebase app as Windows, plus the Mac bundle id so the
+  /// Apple SDK can match the sandboxed TestFlight / App Store binary.
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyC9E_IEgksqLswI5omHYx4EPHLsT6Y9QCg',
+    appId: '1:34782540195:web:e8a1518bd8945d60c5aa16',
+    messagingSenderId: '34782540195',
+    projectId: 'study-app-18492',
+    authDomain: 'study-app-18492.firebaseapp.com',
+    storageBucket: 'study-app-18492.firebasestorage.app',
+    iosBundleId: 'com.adaracurry.studygrove',
+  );
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyC9E_IEgksqLswI5omHYx4EPHLsT6Y9QCg',
