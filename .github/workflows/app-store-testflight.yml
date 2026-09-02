@@ -196,6 +196,9 @@ jobs:
           fi
 
           cp "$MAC_PP_PATH" "$APP/Contents/embedded.provisionprofile"
+          /usr/libexec/PlistBuddy -c 'Set :LSApplicationCategoryType public.app-category.education' "$APP/Contents/Info.plist" \
+            || /usr/libexec/PlistBuddy -c 'Add :LSApplicationCategoryType string public.app-category.education' "$APP/Contents/Info.plist"
+          echo "LSApplicationCategoryType=$(/usr/libexec/PlistBuddy -c 'Print :LSApplicationCategoryType' "$APP/Contents/Info.plist")"
           security unlock-keychain -p "$(cat "$RUNNER_TEMP/keychain.pw")" "$KEYCHAIN_PATH"
 
           if [ -d "$APP/Contents/Frameworks" ]; then
@@ -245,11 +248,13 @@ jobs:
           payload = {
               "key_id": os.environ["APP_STORE_CONNECT_KEY_ID"],
               "issuer_id": os.environ["APP_STORE_CONNECT_ISSUER_ID"],
-              "key_filepath": str(key_dir / "AuthKey.p8"),
+              "key": (key_dir / "AuthKey.p8").read_text(),
           }
           (key_dir / "api_key.json").write_text(json.dumps(payload))
           PY
-          if ! fastlane pilot upload \
+          # Fastlane maps APP_STORE_CONNECT_API_KEY to api_key (expects a Hash).
+          unset APP_STORE_CONNECT_API_KEY
+          if ! env -u APP_STORE_CONNECT_API_KEY fastlane pilot upload \
             --pkg "$PKG_PATH" \
             --api_key_path "$KEY_DIR/api_key.json" \
             --skip_waiting_for_build_processing true
