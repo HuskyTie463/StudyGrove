@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.flutter_organiser"
+    namespace = "com.adaracurry.studygrove"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -23,8 +23,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.flutter_organiser"
+        applicationId = "com.adaracurry.studygrove"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // Firebase Auth / Firestore need API 23+.
@@ -36,8 +35,7 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Sideload / GitHub APK: debug-signed so CI can ship without a Play keystore.
             signingConfig = signingConfigs.getByName("debug")
         }
     }

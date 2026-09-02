@@ -1,4 +1,4 @@
-package com.example.flutter_organiser
+package com.adaracurry.studygrove
 
 import io.flutter.embedding.android.FlutterActivity
 

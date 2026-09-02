@@ -1,0 +1,94 @@
+name: Android sideload APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.2'
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build Android APKs with built-in AI keys
+        env:
+          BUNDLED_STUDY_AI_KEY: ${{ secrets.BUNDLED_STUDY_AI_KEY }}
+          BUNDLED_OPENAI_TTS_KEY: ${{ secrets.BUNDLED_OPENAI_TTS_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BUNDLED_STUDY_AI_KEY" ] || [ -z "$BUNDLED_OPENAI_TTS_KEY" ]; then
+            echo "Missing BUNDLED_STUDY_AI_KEY or BUNDLED_OPENAI_TTS_KEY repo secrets."
+            exit 1
+          fi
+          flutter build apk --release --split-per-abi \
+            --dart-define=BUNDLED_STUDY_AI_KEY="$BUNDLED_STUDY_AI_KEY" \
+            --dart-define=BUNDLED_OPENAI_TTS_KEY="$BUNDLED_OPENAI_TTS_KEY"
+          flutter build apk --release \
+            --dart-define=BUNDLED_STUDY_AI_KEY="$BUNDLED_STUDY_AI_KEY" \
+            --dart-define=BUNDLED_OPENAI_TTS_KEY="$BUNDLED_OPENAI_TTS_KEY"
+
+      - name: Collect APKs
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          ARM64=$(find build/app/outputs/flutter-apk -name '*arm64-v8a*.apk' | head -n 1)
+          FAT=$(find build/app/outputs/flutter-apk -name 'app-release.apk' | head -n 1)
+          if [ -z "$ARM64" ]; then
+            echo "arm64-v8a APK not found"
+            ls -la build/app/outputs/flutter-apk || true
+            exit 1
+          fi
+          cp "$ARM64" dist/StudyGrove-android-arm64.apk
+          if [ -n "$FAT" ]; then
+            cp "$FAT" dist/StudyGrove-android-universal.apk
+          fi
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StudyGrove-android
+          path: dist/*.apk
+
+      - name: Put APKs on GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          NOTES=$(cat <<'EOF'
+          Pixel / most phones: download **StudyGrove-android-arm64.apk**.
+          Other devices: use **StudyGrove-android-universal.apk** if the arm64 file will not install.
+
+          This is a **debug-signed sideload APK** (not Play Store). Open the link on the phone, allow Install unknown apps for the browser/GitHub if Android asks, and choose Install anyway if Play Protect warns.
+
+          The APK includes built-in Study AI keys (same as the Mac USB zip). Do not post this link in public Discord or elsewhere.
+
+          Firebase may be limited if this Android package is not fully registered; the app should still launch.
+
+          Rebuild later: Actions → Android sideload APK → Run workflow.
+          EOF
+          )
+          ASSETS=(dist/StudyGrove-android-arm64.apk)
+          if [ -f dist/StudyGrove-android-universal.apk ]; then
+            ASSETS+=(dist/StudyGrove-android-universal.apk)
+          fi
+          gh release delete android-sideload --yes || true
+          gh release create android-sideload \
+            --title "Study Grove for Android (sideload)" \
+            --notes "$NOTES" \
+            "${ASSETS[@]}"
