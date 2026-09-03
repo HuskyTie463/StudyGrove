@@ -29,18 +29,16 @@ jobs:
 
       - run: flutter pub get
 
-      - name: Build macOS with built-in AI keys
+      - name: Build macOS release
         env:
-          BUNDLED_STUDY_AI_KEY: ${{ secrets.BUNDLED_STUDY_AI_KEY }}
-          BUNDLED_OPENAI_TTS_KEY: ${{ secrets.BUNDLED_OPENAI_TTS_KEY }}
+          STUDY_AI_PROXY_URL: ${{ secrets.STUDY_AI_PROXY_URL }}
         run: |
-          if [ -z "$BUNDLED_STUDY_AI_KEY" ] || [ -z "$BUNDLED_OPENAI_TTS_KEY" ]; then
-            echo "Missing BUNDLED_STUDY_AI_KEY or BUNDLED_OPENAI_TTS_KEY repo secrets."
-            exit 1
+          if [ -n "${STUDY_AI_PROXY_URL:-}" ]; then
+            flutter build macos --release \
+              --dart-define=STUDY_AI_PROXY_URL="$STUDY_AI_PROXY_URL"
+          else
+            flutter build macos --release
           fi
-          flutter build macos --release \
-            --dart-define=BUNDLED_STUDY_AI_KEY="$BUNDLED_STUDY_AI_KEY" \
-            --dart-define=BUNDLED_OPENAI_TTS_KEY="$BUNDLED_OPENAI_TTS_KEY"
 
       - name: Zip app for USB
         run: |

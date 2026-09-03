@@ -142,14 +142,8 @@ class DashboardLayoutConfig {
         ),
       };
 
-  /// Phone home: compact Today only. Gap session and Today's queue stay addable.
-  static Map<DashboardWidgetType, DesktopRect> defaultPhoneRects() {
-    final suggested = suggestedPhoneRects();
-    return {
-      DashboardWidgetType.todayEvents:
-          suggested[DashboardWidgetType.todayEvents]!,
-    };
-  }
+  /// Phone home starts empty. Queue, events, and gap stay addable.
+  static Map<DashboardWidgetType, DesktopRect> defaultPhoneRects() => {};
 
   static Map<DashboardWidgetType, DesktopRect> suggestedDesktopRects() => {
         DashboardWidgetType.gapSession: const DesktopRect(
@@ -178,13 +172,10 @@ class DashboardLayoutConfig {
         ),
       };
 
-  /// Desktop home omits Gap session; it remains available via Add widget.
+  /// Desktop home omits Gap session, Today's events, and Today's queue.
   static Map<DashboardWidgetType, DesktopRect> defaultDesktopRects() {
     final suggested = suggestedDesktopRects();
     return {
-      DashboardWidgetType.tasks: suggested[DashboardWidgetType.tasks]!,
-      DashboardWidgetType.todayEvents:
-          suggested[DashboardWidgetType.todayEvents]!,
       DashboardWidgetType.upcomingAssessments:
           suggested[DashboardWidgetType.upcomingAssessments]!,
     };

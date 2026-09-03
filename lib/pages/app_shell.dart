@@ -17,6 +17,7 @@ import '../services/subject_service.dart';
 import '../services/task_service.dart';
 import '../theme/chrome_palettes.dart';
 import '../theme/design_tokens.dart';
+import '../ui/shared_ui.dart';
 import '../ui/shell_nav.dart';
 import '../ui/shell_scope.dart';
 import '../ui/style_motifs.dart';
@@ -50,7 +51,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   AppPage _page = AppPage.dashboard;
   AppPage? _previous;
-  ShellSection? _openSection = ShellSection.home;
+  ShellSection? _openSection;
   String? _subjectId;
 
   late final String _uid;
@@ -90,6 +91,17 @@ class _AppShellState extends State<AppShell> {
     _selectedDay = _dayOnly(DateTime.now());
     _eventsStream = _eventSvc.streamCombinedEventsForDay(_selectedDay);
     _restoreSubject();
+    _applyLaunchLink();
+  }
+
+  void _applyLaunchLink() {
+    final route = WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+    final lower = route.toLowerCase();
+    if (lower.contains('timetable') ||
+        lower.contains('studygrove://calendar')) {
+      _page = AppPage.calendar;
+      _openSection = null;
+    }
   }
 
   Future<void> _restoreSubject() async {
@@ -119,14 +131,12 @@ class _AppShellState extends State<AppShell> {
   DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   void _setPage(AppPage p) {
-    if (p == _page) {
-      setState(() => _openSection = sectionForPage(p));
-      return;
-    }
     setState(() {
-      _previous = _page;
-      _page = p;
-      _openSection = sectionForPage(p);
+      if (p != _page) {
+        _previous = _page;
+        _page = p;
+      }
+      _openSection = null;
     });
   }
 
@@ -139,7 +149,7 @@ class _AppShellState extends State<AppShell> {
       setState(() {
         _previous = p;
         _page = back;
-        _openSection = sectionForPage(back);
+        _openSection = null;
       });
       return;
     }
@@ -178,27 +188,20 @@ class _AppShellState extends State<AppShell> {
     return AnimatedBuilder(
       animation: themeController,
       builder: (context, _) {
-        final showBg = themeController.showShellBackground ||
-            themeController.useBackgroundBlend;
-        if (!showBg) return child;
-        final isWide = MediaQuery.of(context).size.width >= 900;
         return Stack(
           fit: StackFit.expand,
           children: [
+            // One wallpaper for the whole shell. Pages and chrome must not
+            // paint a second copy — they only sit on top of this layer.
             ExcludeSemantics(
-              child: Image.asset(
-                themeController.backgroundAsset,
-                fit: BoxFit.cover,
-                alignment: isWide ? Alignment.center : Alignment.centerLeft,
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface.withValues(
-                      alpha: Theme.of(context).brightness == Brightness.light
-                          ? 0.64
-                          : 0.42,
-                    ),
+              child: RepaintBoundary(
+                child: Image.asset(
+                  themeController.backgroundAsset,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                  filterQuality: FilterQuality.medium,
+                  gaplessPlayback: true,
+                ),
               ),
             ),
             child,
@@ -293,19 +296,26 @@ class _AppShellState extends State<AppShell> {
                   eventsForSelectedDay: const [],
                   subjects: subjects,
                 );
-                return Scaffold(
-                  body: _wrapShell(
-                    _chrome(body: body, subjects: subjects, isWide: isWide),
+                return _wrapShell(
+                  Scaffold(
+                    backgroundColor: Colors.transparent,
+                    extendBody: true,
+                    body: _chrome(
+                      body: body,
+                      subjects: subjects,
+                      isWide: isWide,
+                    ),
+                    bottomNavigationBar: isWide
+                        ? null
+                        : _BottomNav(
+                            page: _page,
+                            openSection: _openSection,
+                            onToggleSection: (s) =>
+                                _showMobileSection(context, s),
+                            onSettings: () =>
+                                _toggleOrOpenPage(AppPage.settings),
+                          ),
                   ),
-                  bottomNavigationBar: isWide
-                      ? null
-                      : _BottomNav(
-                          page: _page,
-                          openSection: _openSection,
-                          onToggleSection: (s) =>
-                              _showMobileSection(context, s),
-                          onSettings: () => _toggleOrOpenPage(AppPage.settings),
-                        ),
                 );
               }
               return const Scaffold(
@@ -343,23 +353,26 @@ class _AppShellState extends State<AppShell> {
                       eventsForSelectedDay: eventsForSelectedDay,
                       subjects: subjects,
                     );
-                    return Scaffold(
-                      body: _wrapShell(
-                        _chrome(
+                    return _wrapShell(
+                      Scaffold(
+                        backgroundColor: Colors.transparent,
+                        extendBody: true,
+                        body: _chrome(
                           body: body,
                           subjects: subjects,
                           isWide: isWide,
                         ),
+                        bottomNavigationBar: isWide
+                            ? null
+                            : _BottomNav(
+                                page: _page,
+                                openSection: _openSection,
+                                onToggleSection: (s) =>
+                                    _showMobileSection(context, s),
+                                onSettings: () =>
+                                    _toggleOrOpenPage(AppPage.settings),
+                              ),
                       ),
-                      bottomNavigationBar: isWide
-                          ? null
-                          : _BottomNav(
-                              page: _page,
-                              openSection: _openSection,
-                              onToggleSection: (s) =>
-                                  _showMobileSection(context, s),
-                              onSettings: () => _toggleOrOpenPage(AppPage.settings),
-                            ),
                     );
                   },
                 );
@@ -463,7 +476,6 @@ class _AppShellState extends State<AppShell> {
                     )
                     .toList();
                 return DashboardPage(
-                  backgroundAsset: themeController.backgroundAsset,
                   panelOpacity: opacity,
                   tasks: scopedTasks,
                   todayEvents: todayEvents,
@@ -711,10 +723,8 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final t = context.tokens;
-    return Material(
-      color: scheme.surface.withValues(alpha: 0.88),
+    return FrostChrome(
       child: SafeArea(
         bottom: false,
         child: SizedBox(
@@ -924,15 +934,13 @@ class _IconRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final t = context.tokens;
     final selectedSection = sectionForPage(page);
 
     return SizedBox(
       width: 56,
       child: StyleRailMotif(
-        child: Material(
-          color: scheme.surface.withValues(alpha: 0.78),
+        child: FrostChrome(
           child: Column(
             children: [
               const SizedBox(height: 8),
@@ -1027,12 +1035,10 @@ class _SubRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final def = sectionDef(section);
     if (def == null) return const SizedBox.shrink();
-    final scheme = Theme.of(context).colorScheme;
     final t = context.tokens;
     return SizedBox(
       width: 196,
-      child: Material(
-        color: scheme.surface.withValues(alpha: 0.70),
+      child: FrostChrome(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
           children: [
@@ -1088,29 +1094,34 @@ class _BottomNav extends StatelessWidget {
         ? 0
         : kShellSections.indexWhere((s) => s.section == selected);
     if (sectionIndex < 0) sectionIndex = 0;
-    return NavigationBar(
-      selectedIndex:
-          page == AppPage.settings ? kShellSections.length : sectionIndex,
-      onDestinationSelected: (i) {
-        if (i >= kShellSections.length) {
-          onSettings();
-          return;
-        }
-        onToggleSection(kShellSections[i].section);
-      },
-      destinations: [
-        for (final def in kShellSections)
-          NavigationDestination(
-            icon: Icon(def.icon),
-            selectedIcon: Icon(def.selectedIcon),
-            label: def.label,
+    return FrostChrome(
+      child: NavigationBar(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        selectedIndex:
+            page == AppPage.settings ? kShellSections.length : sectionIndex,
+        onDestinationSelected: (i) {
+          if (i >= kShellSections.length) {
+            onSettings();
+            return;
+          }
+          onToggleSection(kShellSections[i].section);
+        },
+        destinations: [
+          for (final def in kShellSections)
+            NavigationDestination(
+              icon: Icon(def.icon),
+              selectedIcon: Icon(def.selectedIcon),
+              label: def.label,
+            ),
+          const NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
           ),
-        const NavigationDestination(
-          icon: Icon(Icons.settings_outlined),
-          selectedIcon: Icon(Icons.settings),
-          label: 'Settings',
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

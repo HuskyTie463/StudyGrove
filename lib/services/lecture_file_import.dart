@@ -133,7 +133,7 @@ class LectureFileImport {
   ) async {
     if (!studyAiSettings.hasKey) {
       throw StudyAiException(
-        'Images need an API key so the lecture can be read. Add one in Settings, or paste the text.',
+        'Images need Study AI so the lecture can be read. Sign in with the proxy running, or paste the text.',
       );
     }
     final media = switch (ext) {

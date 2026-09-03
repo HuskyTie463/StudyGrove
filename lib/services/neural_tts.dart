@@ -6,6 +6,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 
 import 'consolidation_engine.dart';
+import 'study_ai_proxy.dart';
 import 'study_ai_settings.dart';
 
 class NeuralTtsException implements Exception {
@@ -157,12 +158,12 @@ class NeuralTts {
     String? cacheKey,
     void Function()? onStarted,
   }) async {
-    final key = studyAiSettings.openAiSpeechKey;
-    if (key == null) {
+    if (!studyAiSettings.hasOpenAiSpeech) {
       throw NeuralTtsException(
-        'Natural Listen voices need an OpenAI key. Add one in Settings.',
+        'Listen voices need the Study AI server running, or a custom OpenAI key in Settings.',
       );
     }
+    final key = studyAiSettings.openAiSpeechKey;
     final cleaned = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (cleaned.isEmpty) return;
 
@@ -222,7 +223,7 @@ class NeuralTts {
   }
 
   Future<File> _synthesize({
-    required String key,
+    required String? key,
     required String text,
     required NeuralVoice voice,
     required ListenVibe vibe,
@@ -256,7 +257,7 @@ class NeuralTts {
   }
 
   Future<File> _request({
-    required String key,
+    required String? key,
     required String text,
     required NeuralVoice voice,
     required String model,
@@ -276,16 +277,31 @@ class NeuralTts {
     }
     if (speed != null) body['speed'] = speed;
 
-    final res = await http
-        .post(
-          Uri.parse('https://api.openai.com/v1/audio/speech'),
-          headers: {
-            'Authorization': 'Bearer $key',
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 90));
+    late final http.Response res;
+    if (studyAiSettings.usesSpeechProxy) {
+      res = await StudyAiProxy.post(
+        '/v1/openai/audio/speech',
+        body: body,
+        timeout: const Duration(seconds: 90),
+      );
+    } else {
+      final k = key?.trim() ?? '';
+      if (k.isEmpty) {
+        throw NeuralTtsException(
+          'Listen voices need the Study AI server running, or a custom OpenAI key in Settings.',
+        );
+      }
+      res = await http
+          .post(
+            Uri.parse('https://api.openai.com/v1/audio/speech'),
+            headers: {
+              'Authorization': 'Bearer $k',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 90));
+    }
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw NeuralTtsException(_errorFrom(res));
@@ -328,7 +344,7 @@ class NeuralTts {
       }
     } catch (_) {}
     if (res.statusCode == 401) {
-      return 'OpenAI key rejected. Check the Listen key in Settings.';
+      return 'Listen could not authenticate. Sign in, or check a custom key in Settings.';
     }
     if (res.statusCode == 429) return 'Rate limited. Try again in a moment.';
     return 'OpenAI speech error (${res.statusCode}).';

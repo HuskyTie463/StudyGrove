@@ -4,8 +4,7 @@ import 'lecture_file_import.dart';
 import 'study_ai_client.dart';
 import 'study_ai_settings.dart';
 
-/// Lecture Lab. Uses the user's API key when one is saved; otherwise
-/// heading/bullet extraction.
+/// Lecture Lab. Uses the Study AI proxy when available.
 class LectureLabService {
   LectureLabService(this.uid);
 

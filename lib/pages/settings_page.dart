@@ -158,6 +158,7 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
   var _saving = false;
   var _savingTts = false;
   var _testing = false;
+  var _advanced = false;
   String? _status;
   String? _ttsStatus;
 
@@ -181,8 +182,8 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
             SizedBox(height: t.gap(0.75)),
             Text(
               studyAiSettings.usingCustomKey
-                  ? 'Using a custom key you saved. It is sent only to ${studyAiSettings.provider.label} when Study Grove calls the API.'
-                  : 'Using the built-in Anthropic key. Paste a different key below if you want to use your own.',
+                  ? 'Using a custom key you saved on this device. It is sent only to ${studyAiSettings.provider.label}.'
+                  : 'Study Grove talks to a small server that holds the model keys. Nothing is shown or stored in this app.',
               style: TextStyle(color: t.textMuted, height: 1.45, fontSize: 13),
             ),
             SizedBox(height: t.gap(1.5)),
@@ -200,32 +201,6 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
               selected: {studyAiSettings.provider},
               onSelectionChanged: (v) => studyAiSettings.setProvider(v.first),
             ),
-            SizedBox(height: t.gap(1.5)),
-            TextField(
-              controller: _ctrl,
-              obscureText: _obscure,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: InputDecoration(
-                labelText: '${studyAiSettings.provider.label} API key',
-                hintText: studyAiSettings.provider.keyHint,
-                suffixIcon: IconButton(
-                  tooltip: _obscure ? 'Show' : 'Hide',
-                  onPressed: () => setState(() => _obscure = !_obscure),
-                  icon: Icon(
-                    _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(height: t.gap(1)),
-            if (studyAiSettings.hasKey)
-              Text(
-                studyAiSettings.usingCustomKey
-                    ? 'Custom key: ${studyAiSettings.maskedKey}'
-                    : 'Built-in key: ${studyAiSettings.maskedKey}',
-                style: TextStyle(color: t.textSecondary, fontSize: 13),
-              ),
             if (_status != null) ...[
               SizedBox(height: t.gap(0.75)),
               Text(_status!, style: TextStyle(color: t.textSecondary, fontSize: 13)),
@@ -235,40 +210,71 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                SgPrimaryButton(
-                  label: _saving ? 'Saving…' : 'Save key',
-                  onPressed: _saving ? null : _save,
-                ),
                 SgSecondaryButton(
-                  label: _testing ? 'Testing…' : 'Test',
+                  label: _testing ? 'Testing…' : 'Test Study AI',
                   onPressed: _testing ? null : _test,
                 ),
-                if (studyAiSettings.usingCustomKey)
-                  SgSecondaryButton(
-                    label: 'Use built-in key',
-                    onPressed: () async {
-                      await studyAiSettings.resetToBundled();
-                      _ctrl.clear();
-                      setState(() => _status = 'Back to the built-in Anthropic key.');
-                    },
-                  ),
               ],
             ),
-            SizedBox(height: t.gap(3)),
-            Text('Listen voices', style: Theme.of(context).textTheme.titleMedium),
-            SizedBox(height: t.gap(0.75)),
-            Text(
-              studyAiSettings.provider == StudyAiProvider.openai &&
-                      studyAiSettings.hasOpenAiSpeech &&
-                      !studyAiSettings.needsSeparateListenKey
-                  ? 'Listen uses OpenAI neural voices with the same key as Study AI.'
-                  : studyAiSettings.usingCustomTtsKey
-                      ? 'Listen uses a custom OpenAI key you saved.'
-                      : 'Listen uses the built-in OpenAI neural key. Paste a different key below if you want to use your own.',
-              style: TextStyle(color: t.textMuted, height: 1.45, fontSize: 13),
+            SizedBox(height: t.gap(2)),
+            TextButton(
+              onPressed: () => setState(() => _advanced = !_advanced),
+              child: Text(
+                _advanced ? 'Hide advanced keys' : 'Advanced: use my own keys',
+              ),
             ),
-            if (studyAiSettings.needsSeparateListenKey) ...[
+            if (_advanced) ...[
+              SizedBox(height: t.gap(1)),
+              Text(
+                'Optional. Leave blank to keep using the server. Fields stay hidden and are never pre-filled.',
+                style: TextStyle(color: t.textMuted, height: 1.4, fontSize: 13),
+              ),
               SizedBox(height: t.gap(1.5)),
+              TextField(
+                controller: _ctrl,
+                obscureText: _obscure,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: InputDecoration(
+                  labelText: '${studyAiSettings.provider.label} key',
+                  hintText: studyAiSettings.provider.keyHint,
+                  suffixIcon: IconButton(
+                    tooltip: _obscure ? 'Show' : 'Hide',
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: t.gap(1.5)),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  SgPrimaryButton(
+                    label: _saving ? 'Saving…' : 'Save key',
+                    onPressed: _saving ? null : _save,
+                  ),
+                  if (studyAiSettings.usingCustomKey)
+                    SgSecondaryButton(
+                      label: 'Use server',
+                      onPressed: () async {
+                        await studyAiSettings.resetToBundled();
+                        _ctrl.clear();
+                        setState(() => _status = 'Back to the Study AI server.');
+                      },
+                    ),
+                ],
+              ),
+              SizedBox(height: t.gap(2)),
+              Text(
+                'Listen / Voice Chat OpenAI key',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              SizedBox(height: t.gap(1)),
               TextField(
                 controller: _ttsCtrl,
                 obscureText: _ttsObscure,
@@ -276,7 +282,7 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
                 enableSuggestions: false,
                 decoration: InputDecoration(
                   labelText: 'OpenAI key for Listen',
-                  hintText: 'sk-…',
+                  hintText: studyAiSettings.provider.keyHint,
                   suffixIcon: IconButton(
                     tooltip: _ttsObscure ? 'Show' : 'Hide',
                     onPressed: () => setState(() => _ttsObscure = !_ttsObscure),
@@ -288,15 +294,6 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
                   ),
                 ),
               ),
-              if (studyAiSettings.maskedTtsKey.isNotEmpty) ...[
-                SizedBox(height: t.gap(1)),
-                Text(
-                  studyAiSettings.usingCustomTtsKey
-                      ? 'Custom Listen key: ${studyAiSettings.maskedTtsKey}'
-                      : 'Built-in Listen key: ${studyAiSettings.maskedTtsKey}',
-                  style: TextStyle(color: t.textSecondary, fontSize: 13),
-                ),
-              ],
               if (_ttsStatus != null) ...[
                 SizedBox(height: t.gap(0.75)),
                 Text(
@@ -315,11 +312,13 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
                   ),
                   if (studyAiSettings.usingCustomTtsKey)
                     SgSecondaryButton(
-                      label: 'Use built-in Listen key',
+                      label: 'Use server for Listen',
                       onPressed: () async {
                         await studyAiSettings.setTtsOpenAiKey('');
                         _ttsCtrl.clear();
-                        setState(() => _ttsStatus = 'Back to the built-in Listen key.');
+                        setState(
+                          () => _ttsStatus = 'Listen uses the Study AI server.',
+                        );
                       },
                     ),
                 ],
@@ -337,8 +336,8 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
       await studyAiSettings.setApiKey(_ctrl.text);
       _ctrl.clear();
       setState(() => _status = studyAiSettings.usingCustomKey
-          ? 'Custom key saved.'
-          : 'Using the built-in key.');
+          ? 'Custom key saved on this device.'
+          : 'Using the Study AI server.');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -350,7 +349,7 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
       _status = null;
     });
     try {
-      if (_ctrl.text.trim().isNotEmpty) {
+      if (_advanced && _ctrl.text.trim().isNotEmpty) {
         await studyAiSettings.setApiKey(_ctrl.text);
         _ctrl.clear();
       }
@@ -360,12 +359,12 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
         maxTokens: 16,
       );
       setState(() => _status = reply.toLowerCase().contains('ok')
-          ? 'Key works.'
+          ? 'Study AI is working.'
           : 'Got a reply: ${reply.trim()}');
     } catch (e) {
       setState(() => _status = e.toString());
     } finally {
-      if (mounted)       setState(() => _testing = false);
+      if (mounted) setState(() => _testing = false);
     }
   }
 
@@ -375,9 +374,9 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
       await studyAiSettings.setTtsOpenAiKey(_ttsCtrl.text);
       _ttsCtrl.clear();
       setState(
-        () => _ttsStatus = studyAiSettings.hasOpenAiSpeech
-            ? 'Listen key saved. Neural voices are on.'
-            : 'Listen key cleared.',
+        () => _ttsStatus = studyAiSettings.usingCustomTtsKey
+            ? 'Custom Listen key saved on this device.'
+            : 'Listen uses the Study AI server.',
       );
     } catch (e) {
       setState(() => _ttsStatus = e.toString());
@@ -386,4 +385,3 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
     }
   }
 }
-

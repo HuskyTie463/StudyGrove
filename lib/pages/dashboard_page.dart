@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/dashboard_layout.dart';
@@ -10,7 +12,6 @@ import '../utils/datetime_utils.dart';
 class DashboardPage extends StatefulWidget {
   const DashboardPage({
     super.key,
-    required this.backgroundAsset,
     required this.panelOpacity,
     required this.tasks,
     required this.todayEvents,
@@ -24,7 +25,6 @@ class DashboardPage extends StatefulWidget {
     this.gapSessionPanel,
   });
 
-  final String backgroundAsset;
   final double panelOpacity;
   final List<TaskItem> tasks;
   final List<AppEvent> todayEvents;
@@ -185,6 +185,14 @@ class _DashboardPageState extends State<DashboardPage> {
         return Row(
           children: [
             const Spacer(),
+            IconButton(
+              tooltip: 'Add widget',
+              onPressed: () {
+                _enterEdit();
+                _openAddPicker(phone: true);
+              },
+              icon: const Icon(Icons.add_box_outlined),
+            ),
             if (!_editMode)
               IconButton(
                 tooltip: 'Edit layout',
@@ -303,32 +311,7 @@ class _DashboardPageState extends State<DashboardPage> {
       );
     }
 
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: Image.asset(
-            widget.backgroundAsset,
-            fit: BoxFit.cover,
-            alignment: isWide ? Alignment.center : Alignment.centerLeft,
-          ),
-        ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(0.0, -0.1),
-                radius: 1.15,
-                colors: [
-                  Colors.transparent,
-                  Theme.of(context).brightness == Brightness.dark
-                      ? Colors.black.withValues(alpha: 0.55)
-                      : Colors.white.withValues(alpha: 0.40),
-                ],
-              ),
-            ),
-          ),
-        ),
-        SafeArea(
+    return SafeArea(
           child: Padding(
             padding: isWide
                 ? const EdgeInsets.all(18)
@@ -346,6 +329,10 @@ class _DashboardPageState extends State<DashboardPage> {
                     touchFriendly: !isWide,
                     onEnterEdit: _enterEdit,
                     onExitEdit: _exitEdit,
+                    onAddWidget: () {
+                      _enterEdit();
+                      _openAddPicker(phone: !isWide);
+                    },
                     onDelete: isWide ? _deleteDesktop : _deletePhone,
                     onMoveOrResize: (type, rect) {
                       if (!_layout.isValidRect(rect)) return;
@@ -370,8 +357,6 @@ class _DashboardPageState extends State<DashboardPage> {
               ],
             ),
           ),
-        ),
-      ],
     );
   }
 }
@@ -384,6 +369,7 @@ class _DashboardGridCanvas extends StatefulWidget {
     required this.touchFriendly,
     required this.onEnterEdit,
     required this.onExitEdit,
+    required this.onAddWidget,
     required this.onDelete,
     required this.onMoveOrResize,
     required this.panelBuilder,
@@ -395,6 +381,7 @@ class _DashboardGridCanvas extends StatefulWidget {
   final bool touchFriendly;
   final VoidCallback onEnterEdit;
   final VoidCallback onExitEdit;
+  final VoidCallback onAddWidget;
   final ValueChanged<DashboardWidgetType> onDelete;
   final void Function(DashboardWidgetType type, DesktopRect rect) onMoveOrResize;
   final Widget Function(DashboardWidgetType type) panelBuilder;
@@ -445,14 +432,25 @@ class _DashboardGridCanvasState extends State<_DashboardGridCanvas> {
                 child: GestureDetector(
                   onLongPress: widget.onEnterEdit,
                   onSecondaryTap: widget.onEnterEdit,
-                  child: Text(
-                    widget.editMode
-                        ? 'No widgets yet.\nTap Add widget above.'
-                        : 'No widgets yet.\nTap the edit icon to customize.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.84),
-                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.editMode
+                            ? 'No widgets yet.\nTap Add widget above.'
+                            : 'No widgets yet.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: scheme.onSurface.withValues(alpha: 0.84),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      FilledButton.icon(
+                        onPressed: widget.onAddWidget,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Add widget'),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -580,8 +578,14 @@ class _DesktopWidgetFrameState extends State<_DesktopWidgetFrame> {
     final width = rect.colSpan * widget.cellW;
     final height = rect.rowSpan * widget.cellH;
     final scheme = Theme.of(context).colorScheme;
-    final deleteSize = widget.touchFriendly ? 44.0 : 32.0;
-    final resizeSize = widget.touchFriendly ? 40.0 : 22.0;
+    final deleteSize = math.min(
+      widget.touchFriendly ? 36.0 : 28.0,
+      math.max(22.0, height * 0.28),
+    );
+    final resizeSize = math.min(
+      widget.touchFriendly ? 32.0 : 22.0,
+      math.max(18.0, height * 0.24),
+    );
 
     return Positioned(
       left: left,
@@ -589,7 +593,7 @@ class _DesktopWidgetFrameState extends State<_DesktopWidgetFrame> {
       width: width,
       height: height,
       child: Padding(
-        padding: EdgeInsets.all(widget.touchFriendly ? 4 : 6),
+        padding: EdgeInsets.all(widget.touchFriendly ? 3 : 6),
         child: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -600,9 +604,9 @@ class _DesktopWidgetFrameState extends State<_DesktopWidgetFrame> {
                 child: FrostPanel(
                   opacity: widget.panelOpacity,
                   padding: widget.touchFriendly
-                      ? const EdgeInsets.fromLTRB(12, 8, 12, 8)
+                      ? const EdgeInsets.fromLTRB(10, 6, 10, 6)
                       : const EdgeInsets.all(16),
-                  child: widget.child,
+                  child: ClipRect(child: widget.child),
                 ),
               ),
             ),
@@ -631,10 +635,10 @@ class _DesktopWidgetFrameState extends State<_DesktopWidgetFrame> {
                     child: SizedBox(
                       width: deleteSize,
                       height: deleteSize,
-                      child: const Icon(
+                      child: Icon(
                         Icons.remove,
                         color: Colors.white,
-                        size: 22,
+                        size: (deleteSize * 0.55).clamp(12, 18),
                       ),
                     ),
                   ),
@@ -656,9 +660,9 @@ class _DesktopWidgetFrameState extends State<_DesktopWidgetFrame> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.white, width: 1.5),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.open_in_full,
-                      size: 16,
+                      size: (resizeSize * 0.55).clamp(10, 16),
                       color: Colors.white,
                     ),
                   ),
@@ -743,9 +747,34 @@ class _AddWidgetSheet extends StatelessWidget {
             const SizedBox(height: 16),
             if (available.isEmpty)
               const SizedBox(height: 8)
+            else if (MediaQuery.sizeOf(context).width < 800)
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: math.min(360, MediaQuery.sizeOf(context).height * 0.5),
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: available.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 4),
+                  itemBuilder: (context, index) {
+                    final type = available[index];
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(type.label),
+                      subtitle: Text(
+                        type.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () => Navigator.pop(context, type),
+                    );
+                  },
+                ),
+              )
             else
               SizedBox(
-                height: 210,
+                height: 196,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: available.length,
@@ -781,14 +810,12 @@ class _WidgetPreviewCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
         onTap: onTap,
-        child: Container(
+        child: SizedBox(
           width: 220,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: scheme.outline.withValues(alpha: 0.45)),
-          ),
-          child: Column(
+          height: 196,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -806,8 +833,15 @@ class _WidgetPreviewCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              Expanded(child: _previewBody(scheme)),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(width: 180, child: _previewBody(scheme)),
+                ),
+              ),
             ],
+          ),
           ),
         ),
       ),
@@ -942,7 +976,12 @@ class _TasksPanel extends StatelessWidget {
                   onTap: () => onToggle(i),
                   child: Row(
                     children: [
-                      Checkbox(value: t.done, onChanged: (_) => onToggle(i)),
+                      Checkbox(
+                        value: t.done,
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        onChanged: (_) => onToggle(i),
+                      ),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -979,6 +1018,12 @@ class _TasksPanel extends StatelessWidget {
                               ? TaskUrgency.normal
                               : TaskUrgency.urgent,
                         ),
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 32,
+                          height: 32,
+                        ),
+                        padding: EdgeInsets.zero,
                         icon: Icon(
                           t.isUrgent
                               ? Icons.priority_high
@@ -992,6 +1037,12 @@ class _TasksPanel extends StatelessWidget {
                       IconButton(
                         tooltip: 'Remove',
                         onPressed: () => onRemove(i),
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 32,
+                          height: 32,
+                        ),
+                        padding: EdgeInsets.zero,
                         icon: Icon(
                           Icons.close,
                           size: 18,
@@ -1010,19 +1061,25 @@ class _TasksPanel extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Text(
-              "TODAY'S QUEUE",
-              style: TextStyle(
-                letterSpacing: 2,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
+            const Expanded(
+              child: Text(
+                "TODAY'S QUEUE",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
               ),
             ),
-            const Spacer(),
             IconButton(
               tooltip: 'Add task',
               onPressed: onAdd,
-              icon: const Icon(Icons.add_circle_outline),
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+              padding: EdgeInsets.zero,
+              icon: const Icon(Icons.add_circle_outline, size: 20),
             ),
           ],
         ),
@@ -1047,8 +1104,8 @@ class _TodayEventsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final cardPad = compact ? 8.0 : 12.0;
-    final gap = compact ? 6.0 : 10.0;
+    final cardPad = compact ? 6.0 : 12.0;
+    final gap = compact ? 4.0 : 10.0;
     final body = events.isEmpty
         ? Text(
             'No events.',
@@ -1070,7 +1127,7 @@ class _TodayEventsPanel extends StatelessWidget {
                     child: Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: cardPad,
-                        vertical: compact ? 8 : 12,
+                        vertical: compact ? 5 : 12,
                       ),
                       decoration: BoxDecoration(
                         color: scheme.primary.withValues(alpha: 0.12),
@@ -1132,7 +1189,7 @@ class _TodayEventsPanel extends StatelessWidget {
             fontSize: compact ? 12 : 13,
           ),
         ),
-        SizedBox(height: compact ? 6 : 10),
+        SizedBox(height: compact ? 4 : 10),
         if (expandList) Expanded(child: body) else body,
       ],
     );
@@ -1222,6 +1279,12 @@ class _UpcomingAssessmentsPanel extends StatelessWidget {
             ),
             TextButton(
               onPressed: onOpenAll,
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               child: Text('Open', style: TextStyle(color: scheme.onSurface)),
             ),
           ],

@@ -42,4 +42,8 @@ void main() {
     expect(titleForPage(AppPage.profile), 'Profile');
     expect(titleForPage(AppPage.backgrounds), 'Backgrounds');
   });
+
+  test('timetable copy link is an in-app deep link', () {
+    expect(kTimetableAccessLink, 'studygrove://timetable');
+  });
 }

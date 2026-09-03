@@ -552,12 +552,43 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
                             snapshot.data ?? const <String, List<AppEvent>>{};
                         return LayoutBuilder(
                           builder: (context, constraints) {
-                            final columnWidth = math.max(
-                              168.0,
-                              (constraints.maxWidth - 60) / 7,
-                            );
+                            final separators = 10.0 * 6;
+                            final fitted =
+                                (constraints.maxWidth - separators) / 7;
+                            if (fitted >= 96) {
+                              return Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (var index = 0;
+                                      index < dates.length;
+                                      index++) ...[
+                                    if (index > 0) const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _DayColumn(
+                                        date: dates[index],
+                                        dayName: _dayNames[index],
+                                        isToday: _isToday(dates[index]),
+                                        events: grouped[dayKey(dates[index])] ??
+                                            const [],
+                                        subjectsById: byId,
+                                        pxPerMinute: _pxPerMinute,
+                                        minBlockHeight: _minBlockHeight,
+                                        defaultStartMinutes:
+                                            _defaultStartMinutes,
+                                        defaultEndMinutes: _defaultEndMinutes,
+                                        rangePaddingMinutes:
+                                            _rangePaddingMinutes,
+                                        onAdd: () => _addEvent(dates[index]),
+                                        onOpen: _openEvent,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              );
+                            }
+                            final columnWidth = math.max(120.0, fitted);
                             return Scrollbar(
-                              thumbVisibility: constraints.maxWidth < 1200,
+                              thumbVisibility: true,
                               child: ListView.separated(
                                 scrollDirection: Axis.horizontal,
                                 itemCount: dates.length,
@@ -576,7 +607,8 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
                                       subjectsById: byId,
                                       pxPerMinute: _pxPerMinute,
                                       minBlockHeight: _minBlockHeight,
-                                      defaultStartMinutes: _defaultStartMinutes,
+                                      defaultStartMinutes:
+                                          _defaultStartMinutes,
                                       defaultEndMinutes: _defaultEndMinutes,
                                       rangePaddingMinutes:
                                           _rangePaddingMinutes,

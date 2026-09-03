@@ -8,6 +8,7 @@ import '../services/study_time_service.dart';
 import '../services/subject_service.dart';
 import '../ui/sg_primitives.dart';
 import '../ui/shared_ui.dart';
+import '../ui/shell_scope.dart';
 import '../utils/datetime_utils.dart';
 
 class StudyTimePage extends StatelessWidget {
@@ -131,6 +132,8 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _SubjectFilter(allSubjects: widget.allSubjects),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
@@ -164,7 +167,7 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
         FrostPanel(
           opacity: widget.panelOpacity,
           child: _LiveStudyRow(
-            subjects: subjects.isEmpty ? ringSubjects : subjects,
+            subjects: ringSubjects,
             studyTimeService: studyTimeService,
           ),
         ),
@@ -572,6 +575,44 @@ class _FillCirclePainter extends CustomPainter {
       old.progress != progress || old.color != color;
 }
 
+class _SubjectFilter extends StatelessWidget {
+  const _SubjectFilter({required this.allSubjects});
+
+  final List<Subject> allSubjects;
+
+  static const _allValue = '__all__';
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = ShellScope.of(context);
+    final current = scope.subjectId;
+    final value = (current != null && allSubjects.any((s) => s.id == current))
+        ? current
+        : _allValue;
+    return DropdownButtonFormField<String>(
+      key: ValueKey(value),
+      initialValue: value,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Subject',
+        isDense: true,
+      ),
+      items: [
+        const DropdownMenuItem(value: _allValue, child: Text('All subjects')),
+        for (final s in allSubjects)
+          DropdownMenuItem(value: s.id, child: Text(s.label)),
+      ],
+      onChanged: (id) {
+        if (id == null || id == _allValue) {
+          scope.setSubjectId(null);
+        } else {
+          scope.setSubjectId(id);
+        }
+      },
+    );
+  }
+}
+
 class _LiveStudyRow extends StatefulWidget {
   const _LiveStudyRow({
     required this.subjects,
@@ -586,8 +627,6 @@ class _LiveStudyRow extends StatefulWidget {
 }
 
 class _LiveStudyRowState extends State<_LiveStudyRow> {
-  String? _pickedId;
-
   @override
   Widget build(BuildContext context) {
     final subjects = widget.subjects;
@@ -596,9 +635,16 @@ class _LiveStudyRowState extends State<_LiveStudyRow> {
     final elapsed = studyTimeService.liveElapsed;
     final mm = elapsed.inMinutes.toString().padLeft(2, '0');
     final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+    final focusId = ShellScope.maybeOf(context)?.subjectId;
     final selectedId = live
         ? studyTimeService.activeSubjectId
-        : (_pickedId ?? (subjects.isEmpty ? null : subjects.first.id));
+        : (focusId != null && subjects.any((s) => s.id == focusId)
+            ? focusId
+            : null);
+    final dropdownValue = (selectedId != null &&
+            subjects.any((s) => s.id == selectedId))
+        ? selectedId
+        : '__all__';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -615,20 +661,31 @@ class _LiveStudyRowState extends State<_LiveStudyRow> {
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: subjects.any((s) => s.id == selectedId)
-                      ? selectedId
-                      : subjects.first.id,
+                  key: ValueKey(dropdownValue),
+                  initialValue: dropdownValue,
+                  isExpanded: true,
                   decoration: const InputDecoration(
                     labelText: 'Subject',
                     isDense: true,
                   ),
                   items: [
+                    const DropdownMenuItem(
+                      value: '__all__',
+                      child: Text('All subjects'),
+                    ),
                     for (final s in subjects)
                       DropdownMenuItem(value: s.id, child: Text(s.label)),
                   ],
                   onChanged: live
                       ? null
-                      : (id) => setState(() => _pickedId = id),
+                      : (id) {
+                          final scope = ShellScope.maybeOf(context);
+                          if (id == null || id == '__all__') {
+                            scope?.setSubjectId(null);
+                          } else {
+                            scope?.setSubjectId(id);
+                          }
+                        },
                 ),
               ),
               const SizedBox(width: 12),
@@ -641,17 +698,31 @@ class _LiveStudyRowState extends State<_LiveStudyRow> {
                 ),
               ),
               const SizedBox(width: 12),
-              FilledButton.icon(
+              FilledButton(
                 onPressed: () async {
                   if (live) {
                     await studyTimeService.stopLive();
                     return;
                   }
-                  final id = selectedId ?? subjects.first.id;
+                  final id = selectedId;
+                  if (id == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Pick a subject to start the timer.'),
+                      ),
+                    );
+                    return;
+                  }
                   await studyTimeService.startLive(id);
                 },
-                icon: Icon(live ? Icons.stop : Icons.play_arrow),
-                label: Text(live ? 'Stop' : 'Start'),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(live ? Icons.stop : Icons.play_arrow, size: 20),
+                    const SizedBox(width: 6),
+                    Text(live ? 'Stop' : 'Start'),
+                  ],
+                ),
               ),
             ],
           ),

@@ -179,6 +179,8 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
   var _phase = RealtimePhase.connecting;
   var _muted = false;
   var _showTranscript = false;
+  var _tab = 0;
+  NeuralVoice _voice = NeuralVoice.sage;
   String? _error;
 
   @override
@@ -199,9 +201,17 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
     _tutor.onLevel = (value) {
       _level.value = value;
     };
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _loadVoice();
       if (mounted) _connect();
     });
+  }
+
+  Future<void> _loadVoice() async {
+    await ttsVoiceSettings.load();
+    if (!mounted) return;
+    setState(() => _voice = NeuralVoice.byId(ttsVoiceSettings.name));
   }
 
   Future<void> _connect() async {
@@ -218,7 +228,7 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
       );
       await _tutor.start(
         instructions: briefing,
-        voice: NeuralVoice.realtimeId(ttsVoiceSettings.name),
+        voice: NeuralVoice.realtimeId(_voice.id),
       );
       widget.progressService?.increment(recalls: 1);
     } catch (e) {
@@ -296,10 +306,76 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final last = _lines.isEmpty ? null : _lines.last;
     return ListView(
       padding: EdgeInsets.fromLTRB(t.gap(2.5), t.gap(1), t.gap(2.5), t.gap(2)),
       children: [
+        Center(
+          child: SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 0, label: Text('Chat')),
+              ButtonSegment(value: 1, label: Text('Options')),
+            ],
+            selected: {_tab},
+            onSelectionChanged: (v) => setState(() => _tab = v.first),
+          ),
+        ),
+        SizedBox(height: t.gap(1.5)),
+        if (_tab == 1) ..._options(context) else ..._chat(context),
+      ],
+    );
+  }
+
+  List<Widget> _options(BuildContext context) {
+    final t = context.tokens;
+    return [
+      Text(
+        'Voice',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      SizedBox(height: t.gap(0.5)),
+      Text(
+        'Realtime maps names like Fable → Ballad.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: t.textMuted, fontSize: 13),
+      ),
+      SizedBox(height: t.gap(1.5)),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.center,
+        children: [
+          for (final voice in NeuralVoice.all)
+            ChoiceChip(
+              label: Text(voice.label),
+              selected: _voice.id == voice.id,
+              onSelected: (_) => _pickVoice(voice),
+            ),
+        ],
+      ),
+      SizedBox(height: t.gap(1)),
+      Text(
+        _voice.hint,
+        textAlign: TextAlign.center,
+        style: TextStyle(color: t.textSecondary, fontSize: 13, height: 1.35),
+      ),
+    ];
+  }
+
+  Future<void> _pickVoice(NeuralVoice voice) async {
+    setState(() => _voice = voice);
+    await ttsVoiceSettings.save(
+      TtsVoiceChoice(name: voice.id, locale: 'en-US'),
+    );
+    if (_live || _phase == RealtimePhase.connecting) {
+      await _connect();
+    }
+  }
+
+  List<Widget> _chat(BuildContext context) {
+    final t = context.tokens;
+    final last = _lines.isEmpty ? null : _lines.last;
+    return [
         Text(
           'Voice chat',
           textAlign: TextAlign.center,
@@ -439,7 +515,6 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
               ),
             ),
         ],
-      ],
-    );
+    ];
   }
 }

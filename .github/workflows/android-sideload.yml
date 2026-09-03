@@ -26,22 +26,17 @@ jobs:
 
       - run: flutter pub get
 
-      - name: Build Android APKs with built-in AI keys
+      - name: Build Android APKs
         env:
-          BUNDLED_STUDY_AI_KEY: ${{ secrets.BUNDLED_STUDY_AI_KEY }}
-          BUNDLED_OPENAI_TTS_KEY: ${{ secrets.BUNDLED_OPENAI_TTS_KEY }}
+          STUDY_AI_PROXY_URL: ${{ secrets.STUDY_AI_PROXY_URL }}
         run: |
           set -euo pipefail
-          if [ -z "$BUNDLED_STUDY_AI_KEY" ] || [ -z "$BUNDLED_OPENAI_TTS_KEY" ]; then
-            echo "Missing BUNDLED_STUDY_AI_KEY or BUNDLED_OPENAI_TTS_KEY repo secrets."
-            exit 1
+          DART_DEFINES=()
+          if [ -n "${STUDY_AI_PROXY_URL:-}" ]; then
+            DART_DEFINES+=(--dart-define="STUDY_AI_PROXY_URL=$STUDY_AI_PROXY_URL")
           fi
-          flutter build apk --release --split-per-abi \
-            --dart-define=BUNDLED_STUDY_AI_KEY="$BUNDLED_STUDY_AI_KEY" \
-            --dart-define=BUNDLED_OPENAI_TTS_KEY="$BUNDLED_OPENAI_TTS_KEY"
-          flutter build apk --release \
-            --dart-define=BUNDLED_STUDY_AI_KEY="$BUNDLED_STUDY_AI_KEY" \
-            --dart-define=BUNDLED_OPENAI_TTS_KEY="$BUNDLED_OPENAI_TTS_KEY"
+          flutter build apk --release --split-per-abi "${DART_DEFINES[@]}"
+          flutter build apk --release "${DART_DEFINES[@]}"
 
       - name: Collect APKs
         run: |
@@ -76,7 +71,9 @@ jobs:
 
           This is a **debug-signed sideload APK** (not Play Store). Open the link on the phone, allow Install unknown apps for the browser/GitHub if Android asks, and choose Install anyway if Play Protect warns.
 
-          The APK includes built-in Study AI keys (same as the Mac USB zip). Do not post this link in public Discord or elsewhere.
+          The APK talks to the Study Grove AI server (not packed-in model keys). For a phone off this Wi‑Fi, set GitHub secret STUDY_AI_PROXY_URL to a reachable HTTPS proxy.
+
+          Rebuild later: Actions → Android sideload APK → Run workflow.
 
           Firebase may be limited if this Android package is not fully registered; the app should still launch.
 

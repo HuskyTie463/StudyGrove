@@ -6,6 +6,8 @@ enum VisualStyleFamily {
   neoBrutal,
   aurora,
   quietFocus,
+  dusk,
+  harbor,
 }
 
 extension VisualStyleFamilyX on VisualStyleFamily {
@@ -14,10 +16,12 @@ extension VisualStyleFamilyX on VisualStyleFamily {
   String get label => switch (this) {
         VisualStyleFamily.signature => 'Signature / Editorial',
         VisualStyleFamily.naturalistic => 'Naturalistic / Biophilic',
-        VisualStyleFamily.softCute => 'Soft / Cute',
-        VisualStyleFamily.neoBrutal => 'Neo-Brutal / Bold',
+        VisualStyleFamily.softCute => 'Bloom / Soft',
+        VisualStyleFamily.neoBrutal => 'Bold / High contrast',
         VisualStyleFamily.aurora => 'Aurora / Glass',
         VisualStyleFamily.quietFocus => 'Quiet Focus / Minimal',
+        VisualStyleFamily.dusk => 'Dusk / Twilight',
+        VisualStyleFamily.harbor => 'Harbor / Sea',
       };
 
   String get subtitle => switch (this) {
@@ -26,13 +30,17 @@ extension VisualStyleFamilyX on VisualStyleFamily {
         VisualStyleFamily.naturalistic =>
           'Moss, terracotta, greenhouse calm — pairs with Studio Garden plants',
         VisualStyleFamily.softCute =>
-          'Rounded, soft hierarchy — cute only in non-critical feedback',
+          'Lilac and blush — soft hierarchy, still readable',
         VisualStyleFamily.neoBrutal =>
           'Hard borders, bold type, high-contrast blocks',
         VisualStyleFamily.aurora =>
           'Translucent layers with strong contrast for readable text',
         VisualStyleFamily.quietFocus =>
           'Spare surfaces, quiet ink, minimal decoration',
+        VisualStyleFamily.dusk =>
+          'Plum twilight with warm amber marks',
+        VisualStyleFamily.harbor =>
+          'Teal water, sea glass, sand',
       };
 
   /// Runway / timeline motif for assessment page.
@@ -43,6 +51,8 @@ extension VisualStyleFamilyX on VisualStyleFamily {
         VisualStyleFamily.neoBrutal => 'blocks',
         VisualStyleFamily.aurora => 'illuminated',
         VisualStyleFamily.quietFocus => 'line',
+        VisualStyleFamily.dusk => 'illuminated',
+        VisualStyleFamily.harbor => 'line',
       };
 
   bool get usesPlantPhases =>

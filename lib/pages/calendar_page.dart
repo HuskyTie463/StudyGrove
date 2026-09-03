@@ -134,6 +134,79 @@ class _CalendarPageState extends State<CalendarPage> {
     return cells;
   }
 
+  Widget _monthCell(
+    DateTime? cell, {
+    required DateTime selectedKey,
+    required DateTime todayKey,
+    required Map<String, List<String?>> byDay,
+    required Map<String, Subject> byId,
+    required ColorScheme scheme,
+    required bool compact,
+  }) {
+    if (cell == null) {
+      return Container(
+        decoration: BoxDecoration(
+          color: scheme.onSurface.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: scheme.outline.withValues(alpha: 0.25),
+          ),
+        ),
+      );
+    }
+
+    final cellKey = _dayKey(cell);
+    final isSelected = cellKey == selectedKey;
+    final isToday = cellKey == todayKey;
+    final subjectIds = byDay[du.dayKey(cell)] ?? const [];
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => setState(() => selected = cell),
+      child: Container(
+        clipBehavior: Clip.hardEdge,
+        decoration: BoxDecoration(
+          color: isSelected
+              ? scheme.primary.withValues(alpha: 0.55)
+              : scheme.surfaceContainerHighest.withValues(alpha: 0.50),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isToday
+                ? scheme.primary
+                : scheme.outline.withValues(alpha: 0.30),
+            width: isToday ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.only(
+                top: compact ? 4 : 8,
+                left: compact ? 4 : 8,
+              ),
+              child: Text(
+                '${cell.day}',
+                style: TextStyle(
+                  fontSize: compact ? 12 : 14,
+                  fontWeight: FontWeight.w800,
+                  color: isToday ? scheme.primary : scheme.onSurface,
+                ),
+              ),
+            ),
+            const Spacer(),
+            if (subjectIds.isNotEmpty)
+              _eventBars(
+                subjectIds,
+                byId: byId,
+                scheme: scheme,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _weekdayHeader() {
     const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     return Builder(
@@ -433,92 +506,33 @@ class _CalendarPageState extends State<CalendarPage> {
                     return LayoutBuilder(
                       builder: (context, constraints) {
                         final rows = (days.length / 7).ceil().clamp(1, 6);
-                        final cellH =
-                            (constraints.maxHeight - (rows - 1) * 6) / rows;
-                        final cellW =
-                            (constraints.maxWidth - 6 * 6) / 7;
-                        final ratio = (cellW / cellH).clamp(0.55, 1.2);
-                        return GridView.builder(
-                          itemCount: days.length,
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 7,
-                            mainAxisSpacing: 6,
-                            crossAxisSpacing: 6,
-                            childAspectRatio: ratio,
-                          ),
-                          itemBuilder: (_, i) {
-                            final cell = days[i];
-                            if (cell == null) {
-                              return Container(
-                                decoration: BoxDecoration(
-                                  color: scheme.onSurface
-                                      .withValues(alpha: 0.03),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: scheme.outline
-                                        .withValues(alpha: 0.25),
-                                  ),
-                                ),
-                              );
-                            }
-
-                            final cellKey = _dayKey(cell);
-                            final isSelected = cellKey == selectedKey;
-                            final isToday = cellKey == todayKey;
-                            final subjectIds =
-                                byDay[du.dayKey(cell)] ?? const [];
-
-                            return InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () => setState(() => selected = cell),
-                              child: Container(
-                                clipBehavior: Clip.hardEdge,
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? scheme.primary.withValues(alpha: 0.55)
-                                      : scheme.surfaceContainerHighest
-                                          .withValues(alpha: 0.50),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: isToday
-                                        ? scheme.primary
-                                        : scheme.outline
-                                            .withValues(alpha: 0.30),
-                                    width: isToday ? 2 : 1,
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                        return Column(
+                          children: [
+                            for (var r = 0; r < rows; r++) ...[
+                              if (r > 0) const SizedBox(height: 6),
+                              Expanded(
+                                child: Row(
                                   children: [
-                                    Padding(
-                                      padding: EdgeInsets.only(
-                                        top: isWide ? 10 : 4,
-                                        left: isWide ? 10 : 4,
-                                      ),
-                                      child: Text(
-                                        "${cell.day}",
-                                        style: TextStyle(
-                                          fontSize: isWide ? 14 : 12,
-                                          fontWeight: FontWeight.w800,
-                                          color: isToday
-                                              ? scheme.primary
-                                              : scheme.onSurface,
+                                    for (var c = 0; c < 7; c++) ...[
+                                      if (c > 0) const SizedBox(width: 6),
+                                      Expanded(
+                                        child: _monthCell(
+                                          days[r * 7 + c],
+                                          selectedKey: selectedKey,
+                                          todayKey: todayKey,
+                                          byDay: byDay,
+                                          byId: byId,
+                                          scheme: scheme,
+                                          compact: !isWide ||
+                                              constraints.maxHeight < 420,
                                         ),
                                       ),
-                                    ),
-                                    const Spacer(),
-                                    if (subjectIds.isNotEmpty)
-                                      _eventBars(
-                                        subjectIds,
-                                        byId: byId,
-                                        scheme: scheme,
-                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
-                            );
-                          },
+                            ],
+                          ],
                         );
                       },
                     );
@@ -670,17 +684,32 @@ class _CalendarPageState extends State<CalendarPage> {
           ),
         );
 
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              children: [
-                Expanded(flex: isWide ? 6 : 5, child: calendarPanel()),
-                const SizedBox(height: 14),
-                Expanded(flex: isWide ? 4 : 4, child: eventsPanel()),
-              ],
-            ),
-          ),
+        return LayoutBuilder(
+          builder: (context, pageSize) {
+            final sideBySide = pageSize.maxWidth >= 960;
+            final short = pageSize.maxHeight < 720;
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.all(short ? 10 : 18),
+                child: sideBySide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(flex: 7, child: calendarPanel()),
+                          const SizedBox(width: 14),
+                          Expanded(flex: 4, child: eventsPanel()),
+                        ],
+                      )
+                    : Column(
+                        children: [
+                          Expanded(flex: 5, child: calendarPanel()),
+                          const SizedBox(height: 14),
+                          Expanded(flex: 4, child: eventsPanel()),
+                        ],
+                      ),
+              ),
+            );
+          },
         );
       },
     );

@@ -7,7 +7,7 @@ class DashboardLayoutService {
   static const _desktopKey = 'dashboard_layout_desktop_v1';
   static const _legacyPhoneKey = 'dashboard_layout_phone_v1';
   static const _widgetDefaultsMigrationKey =
-      'dashboard_layout_widget_defaults_v3';
+      'dashboard_layout_widget_defaults_v5';
 
   Future<DashboardLayoutConfig> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -29,9 +29,7 @@ class DashboardLayoutService {
         : defaults;
 
     final phoneRects = phoneRaw != null
-        ? (fromPhone.phoneRects.isEmpty
-            ? defaults.phoneRects
-            : fromPhone.phoneRects)
+        ? fromPhone.phoneRects
         : defaults.phoneRects;
     final desktopRects = desktopRaw != null
         ? fromDesktop.desktopRects
@@ -43,34 +41,22 @@ class DashboardLayoutService {
     );
     final migrated = prefs.getBool(_widgetDefaultsMigrationKey) ?? false;
     if (!migrated) {
-      _applyV3WidgetDefaults(config);
+      _applyV5WidgetDefaults(config);
       await prefs.setBool(_widgetDefaultsMigrationKey, true);
       await save(config);
     }
     return config;
   }
 
-  /// One-time: drop auto Gap session / phone queue, compact phone Today.
-  void _applyV3WidgetDefaults(DashboardLayoutConfig config) {
+  /// One-time: no auto Gap / queue / Today's events. Those stay addable.
+  void _applyV5WidgetDefaults(DashboardLayoutConfig config) {
     config.phoneRects.remove(DashboardWidgetType.gapSession);
     config.phoneRects.remove(DashboardWidgetType.tasks);
-    config.phoneRects[DashboardWidgetType.todayEvents] =
-        DashboardLayoutConfig.suggestedPhoneRects()[
-            DashboardWidgetType.todayEvents]!;
+    config.phoneRects.remove(DashboardWidgetType.todayEvents);
 
     config.desktopRects.remove(DashboardWidgetType.gapSession);
-    const oldDesktopTasks = DesktopRect(
-      col: 0,
-      row: 2,
-      colSpan: 5,
-      rowSpan: 6,
-    );
-    final tasks = config.desktopRects[DashboardWidgetType.tasks];
-    if (tasks == oldDesktopTasks) {
-      config.desktopRects[DashboardWidgetType.tasks] =
-          DashboardLayoutConfig.suggestedDesktopRects()[
-              DashboardWidgetType.tasks]!;
-    }
+    config.desktopRects.remove(DashboardWidgetType.todayEvents);
+    config.desktopRects.remove(DashboardWidgetType.tasks);
   }
 
   Future<void> save(DashboardLayoutConfig config) async {

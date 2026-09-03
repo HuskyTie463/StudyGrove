@@ -5,6 +5,7 @@ import '../main.dart';
 import '../theme/app_visual_mode.dart';
 import '../theme/design_tokens.dart';
 import '../theme/style_family.dart';
+import '../ui/shared_ui.dart';
 
 class BackgroundsPage extends StatelessWidget {
   const BackgroundsPage({super.key});
@@ -19,6 +20,13 @@ class BackgroundsPage extends StatelessWidget {
           child: ListView(
             padding: EdgeInsets.all(t.gap(2)),
             children: [
+              FrostPanel(
+                // Opaque enough that the shell wallpaper does not show through
+                // as a second copy behind the thumbnail grid.
+                opacity: 0.88,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
               Text('Appearance', style: Theme.of(context).textTheme.titleMedium),
               SizedBox(height: t.gap(1)),
               SegmentedButton<ThemeBrightnessPref>(
@@ -153,6 +161,9 @@ class BackgroundsPage extends StatelessWidget {
                     ),
                   );
                 },
+              ),
+                  ],
+                ),
               ),
             ],
           ),

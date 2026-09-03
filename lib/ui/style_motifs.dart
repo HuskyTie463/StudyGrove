@@ -81,6 +81,8 @@ IconData assessmentIconFor(VisualStyleFamily family, [double? progress]) {
     VisualStyleFamily.neoBrutal => Icons.grid_view_rounded,
     VisualStyleFamily.aurora => Icons.blur_circular_outlined,
     VisualStyleFamily.quietFocus => Icons.horizontal_rule_rounded,
+    VisualStyleFamily.dusk => Icons.nights_stay_outlined,
+    VisualStyleFamily.harbor => Icons.water_outlined,
   };
 }
 
@@ -114,6 +116,10 @@ class _RailMotifPainter extends CustomPainter {
         _glowRail(canvas, size);
       case VisualStyleFamily.quietFocus:
         _inkLine(canvas, size);
+      case VisualStyleFamily.dusk:
+        _glowRail(canvas, size);
+      case VisualStyleFamily.harbor:
+        _harborWave(canvas, size);
     }
   }
 
@@ -212,6 +218,21 @@ class _RailMotifPainter extends CustomPainter {
       ..color = ink.withValues(alpha: 0.35)
       ..strokeWidth = 1;
     canvas.drawLine(Offset(6, 12), Offset(6, size.height - 12), paint);
+  }
+
+  void _harborWave(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.45)
+      ..strokeWidth = 1.6
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final path = Path();
+    path.moveTo(8, 12);
+    for (var y = 12.0; y < size.height - 8; y += 16) {
+      final x = 8 + math.sin(y / 22) * 5;
+      path.lineTo(x, y);
+    }
+    canvas.drawPath(path, paint);
   }
 
   @override

@@ -613,7 +613,7 @@ class _QuizSessionState extends State<_QuizSession> {
           _items = items;
           _loading = false;
           _loadNote =
-              'Generated with your ${studyAiSettings.provider.label} key.';
+              'Generated with Study AI.';
         });
         return;
       } catch (e) {
@@ -1421,7 +1421,7 @@ class _KnobSessionState extends State<_KnobSession> {
             _items = items;
             _loading = false;
             _loadNote =
-                'Generated with your ${studyAiSettings.provider.label} key.';
+                'Generated with Study AI.';
           });
         }
         return;
@@ -1647,7 +1647,7 @@ class _TransferSessionState extends State<_TransferSession> {
             _items = items;
             _loading = false;
             _loadNote =
-                'Generated with your ${studyAiSettings.provider.label} key.';
+                'Generated with Study AI.';
           });
         }
         return;

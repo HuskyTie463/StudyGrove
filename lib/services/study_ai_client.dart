@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/models.dart';
 import 'consolidation_engine.dart';
 import 'math_format.dart';
+import 'study_ai_proxy.dart';
 import 'study_ai_settings.dart';
 
 class StudyAiException implements Exception {
@@ -26,8 +27,8 @@ class StudyAiExtractedTopic {
   final List<RecallQuestion> questions;
 }
 
-/// Calls the user's OpenAI or Anthropic key. Notes stay on-device except
-/// for the request body sent to that provider.
+/// Calls the Study Grove AI proxy (or a user-supplied key). Notes stay on
+/// the device except for the request body sent to the model.
 class StudyAiClient {
   StudyAiClient._();
   static final instance = StudyAiClient._();
@@ -43,19 +44,18 @@ class StudyAiClient {
     int maxTokens = 3500,
   }) async {
     if (!studyAiSettings.ready) await studyAiSettings.load();
-    final key = studyAiSettings.apiKey?.trim() ?? '';
-    if (key.isEmpty) {
-      throw StudyAiException('Add your API key in Settings.');
+    if (!studyAiSettings.hasKey) {
+      throw StudyAiException(
+        'Study AI needs the proxy running, or a custom key in Settings.',
+      );
     }
     return switch (studyAiSettings.provider) {
       StudyAiProvider.openai => _openai(
-          key: key,
           system: system,
           user: user,
           maxTokens: maxTokens,
         ),
       StudyAiProvider.anthropic => _anthropic(
-          key: key,
           system: system,
           user: user,
           maxTokens: maxTokens,
@@ -71,9 +71,10 @@ class StudyAiClient {
     required String mediaType,
   }) async {
     if (!studyAiSettings.ready) await studyAiSettings.load();
-    final key = studyAiSettings.apiKey?.trim() ?? '';
-    if (key.isEmpty) {
-      throw StudyAiException('Add your API key in Settings.');
+    if (!studyAiSettings.hasKey) {
+      throw StudyAiException(
+        'Study AI needs the proxy running, or a custom key in Settings.',
+      );
     }
     if (bytes.length > 18 * 1024 * 1024) {
       throw StudyAiException(
@@ -90,7 +91,7 @@ class StudyAiClient {
         'Name what each symbol means in words.';
     if (studyAiSettings.provider == StudyAiProvider.openai) {
       throw StudyAiException(
-        'PDF and image files work with the Anthropic key. Switch provider in Settings, or paste the text.',
+        'PDF and image files work with Anthropic. Switch provider in Settings, or paste the text.',
       );
     }
     final isPdf = mediaType == 'application/pdf';
@@ -103,7 +104,6 @@ class StudyAiClient {
       },
     };
     return _anthropic(
-      key: key,
       system:
           'You transcribe lecture materials into clean study notes. Use only what is in the file.',
       user: [
@@ -151,9 +151,10 @@ Each topic 2–3 questions that test meaning, use, and contrast — not "what is
         pdf.isNotEmpty &&
         studyAiSettings.provider == StudyAiProvider.anthropic) {
       if (!studyAiSettings.ready) await studyAiSettings.load();
-      final key = studyAiSettings.apiKey?.trim() ?? '';
-      if (key.isEmpty) {
-        throw StudyAiException('Add your API key in Settings.');
+      if (!studyAiSettings.hasKey) {
+        throw StudyAiException(
+          'Study AI needs the proxy running, or a custom key in Settings.',
+        );
       }
       if (pdf.length > 18 * 1024 * 1024) {
         throw StudyAiException(
@@ -164,7 +165,6 @@ Each topic 2–3 questions that test meaning, use, and contrast — not "what is
           ? 'Also consider these pasted notes:\n$clipped\n'
           : 'The lecture is in the attached PDF. Use only that document.\n';
       raw = await _anthropic(
-        key: key,
         system: system,
         user: [
           {
@@ -194,7 +194,7 @@ $jsonShape
       if (!hasNotes) {
         throw StudyAiException(
           hasPdf
-              ? 'PDF files work with the Anthropic key. Switch provider in Settings, or paste the notes.'
+              ? 'PDF files work with Anthropic. Switch provider in Settings, or paste the notes.'
               : 'Add notes or a PDF to extract.',
         );
       }
@@ -484,29 +484,44 @@ doNotMap must name at least one tempting false mapping.
   }
 
   Future<String> _openai({
-    required String key,
     required String system,
     required String user,
     required int maxTokens,
   }) async {
-    final res = await http
-        .post(
-          Uri.parse('https://api.openai.com/v1/chat/completions'),
-          headers: {
-            'Authorization': 'Bearer $key',
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({
-            'model': StudyAiProvider.openai.defaultModel,
-            'temperature': 0.3,
-            'max_tokens': maxTokens,
-            'messages': [
-              {'role': 'system', 'content': system},
-              {'role': 'user', 'content': user},
-            ],
-          }),
-        )
-        .timeout(const Duration(seconds: 90));
+    final payload = {
+      'model': StudyAiProvider.openai.defaultModel,
+      'temperature': 0.3,
+      'max_tokens': maxTokens,
+      'messages': [
+        {'role': 'system', 'content': system},
+        {'role': 'user', 'content': user},
+      ],
+    };
+    late final http.Response res;
+    if (studyAiSettings.usesProxy) {
+      res = await StudyAiProxy.post(
+        '/v1/openai/chat/completions',
+        body: payload,
+        timeout: const Duration(seconds: 90),
+      );
+    } else {
+      final key = studyAiSettings.apiKey?.trim() ?? '';
+      if (key.isEmpty) {
+        throw StudyAiException(
+          'Study AI needs the proxy running, or a custom key in Settings.',
+        );
+      }
+      res = await http
+          .post(
+            Uri.parse('https://api.openai.com/v1/chat/completions'),
+            headers: {
+              'Authorization': 'Bearer $key',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 90));
+    }
     final data = _decode(res);
     final choices = data['choices'] as List?;
     if (choices == null || choices.isEmpty) {
@@ -522,30 +537,51 @@ doNotMap must name at least one tempting false mapping.
   }
 
   Future<String> _anthropic({
-    required String key,
     required String system,
     required Object user,
     required int maxTokens,
   }) async {
-    final res = await http
-        .post(
-          Uri.parse('https://api.anthropic.com/v1/messages'),
-          headers: {
-            'x-api-key': key,
-            'anthropic-version': '2023-06-01',
-            'Content-Type': 'application/json',
-            if (user is List) 'anthropic-beta': 'pdfs-2024-09-25',
-          },
-          body: jsonEncode({
-            'model': StudyAiProvider.anthropic.defaultModel,
-            'max_tokens': maxTokens,
-            'system': system,
-            'messages': [
-              {'role': 'user', 'content': user},
-            ],
-          }),
-        )
-        .timeout(const Duration(seconds: 120));
+    final payload = {
+      'model': StudyAiProvider.anthropic.defaultModel,
+      'max_tokens': maxTokens,
+      'system': system,
+      'messages': [
+        {'role': 'user', 'content': user},
+      ],
+    };
+    final extra = <String, String>{
+      if (user is List) 'anthropic-beta': 'pdfs-2024-09-25',
+      'anthropic-version': '2023-06-01',
+    };
+    late final http.Response res;
+    if (studyAiSettings.usesProxy) {
+      res = await StudyAiProxy.post(
+        '/v1/anthropic/messages',
+        body: payload,
+        extraHeaders: extra,
+        timeout: const Duration(seconds: 120),
+      );
+    } else {
+      final key = studyAiSettings.apiKey?.trim() ?? '';
+      if (key.isEmpty) {
+        throw StudyAiException(
+          'Study AI needs the proxy running, or a custom key in Settings.',
+        );
+      }
+      res = await http
+          .post(
+            Uri.parse('https://api.anthropic.com/v1/messages'),
+            headers: {
+              'x-api-key': key,
+              'anthropic-version': extra['anthropic-version']!,
+              'Content-Type': 'application/json',
+              if (extra.containsKey('anthropic-beta'))
+                'anthropic-beta': extra['anthropic-beta']!,
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 120));
+    }
     final data = _decode(res);
     final content = data['content'] as List?;
     if (content == null || content.isEmpty) {
@@ -582,7 +618,9 @@ doNotMap must name at least one tempting false mapping.
       return err['message'] as String;
     }
     if (data['message'] is String) return data['message'] as String;
-    if (status == 401) return 'API key rejected. Check it in Settings.';
+    if (status == 401) {
+      return 'Study AI could not authenticate. Sign in, or check a custom key in Settings.';
+    }
     if (status == 429) return 'Rate limited. Try again in a moment.';
     return 'Provider error ($status).';
   }

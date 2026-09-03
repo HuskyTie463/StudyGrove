@@ -9,6 +9,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'neural_tts.dart';
+import 'study_ai_proxy.dart';
 import 'study_ai_settings.dart';
 
 enum RealtimePhase {
@@ -50,6 +51,7 @@ class RealtimeTutor {
   var _smoothedLevel = 0.0;
   var _micRate = 24000;
   DateTime _lastLevelAt = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _playbackGateUntil = DateTime.fromMillisecondsSinceEpoch(0);
   String _tutorBuf = '';
   String _instructions = '';
   String _voice = 'sage';
@@ -66,11 +68,7 @@ class RealtimeTutor {
     String voice = 'sage',
   }) async {
     await stop();
-    final key = studyAiSettings.openAiSpeechKey;
-    if (key == null) {
-      _fail('Voice chat needs an OpenAI key in Settings → Listen voices.');
-      return;
-    }
+    if (!studyAiSettings.ready) await studyAiSettings.load();
     _setPhase(RealtimePhase.connecting);
     _instructions = instructions;
     _voice = NeuralVoice.realtimeId(voice);
@@ -79,7 +77,8 @@ class RealtimeTutor {
     _micReady = false;
     try {
       await _pcm.init();
-      _ws = await _connect(key);
+      final session = await _sessionCredentials();
+      _ws = await _connect(session.key, preferModel: session.model);
       _wsSub = _ws!.stream.listen(
         _onMessage,
         onError: (Object e) {
@@ -175,14 +174,53 @@ class RealtimeTutor {
     }
   }
 
-  Future<WebSocketChannel> _connect(String key) async {
+  Future<({String key, String? model})> _sessionCredentials() async {
+    if (studyAiSettings.usesSpeechProxy) {
+      final data = await StudyAiProxy.postJson(
+        '/v1/openai/realtime/sessions',
+        body: {
+          'model': _models.first,
+          'voice': _voice,
+        },
+        timeout: const Duration(seconds: 30),
+      );
+      String? secret;
+      final raw = data['client_secret'];
+      if (raw is Map) {
+        secret = raw['value'] as String?;
+      } else if (raw is String) {
+        secret = raw;
+      }
+      if (secret == null || secret.isEmpty) {
+        throw Exception('Voice session could not be created.');
+      }
+      final model = data['model'] as String?;
+      return (key: secret, model: model);
+    }
+    final key = studyAiSettings.openAiSpeechKey;
+    if (key == null) {
+      throw Exception(
+        'Voice chat needs the Study AI server running, or a custom OpenAI key in Settings.',
+      );
+    }
+    return (key: key, model: null);
+  }
+
+  Future<WebSocketChannel> _connect(String key, {String? preferModel}) async {
     Object? last;
-    for (final model in _models) {
+    final models = <String>[
+      if (preferModel != null && preferModel.trim().isNotEmpty) preferModel.trim(),
+      ..._models,
+    ];
+    final seen = <String>{};
+    for (final model in models) {
+      if (!seen.add(model)) continue;
       try {
         final channel = IOWebSocketChannel.connect(
           Uri.parse('wss://api.openai.com/v1/realtime?model=$model'),
           headers: {
             'Authorization': 'Bearer $key',
+            'OpenAI-Beta': 'realtime=v1',
           },
           pingInterval: const Duration(seconds: 15),
         );
@@ -209,11 +247,11 @@ class RealtimeTutor {
             'format': {'type': 'audio/pcm', 'rate': 24000},
             'turn_detection': {
               'type': 'server_vad',
-              'threshold': 0.4,
-              'prefix_padding_ms': 300,
-              'silence_duration_ms': 600,
+              'threshold': 0.55,
+              'prefix_padding_ms': 250,
+              'silence_duration_ms': 700,
               'create_response': true,
-              'interrupt_response': true,
+              'interrupt_response': false,
             },
             if (includeTranscription)
               'transcription': {'model': 'gpt-4o-mini-transcribe'},
@@ -231,7 +269,15 @@ class RealtimeTutor {
         encoder: AudioEncoder.pcm16bits,
         sampleRate: rate,
         numChannels: 1,
+        echoCancel: true,
+        noiseSuppress: true,
+        autoGain: true,
       );
+
+  bool get _holdMic =>
+      _muted ||
+      phase == RealtimePhase.tutorSpeaking ||
+      DateTime.now().isBefore(_playbackGateUntil);
 
   Future<void> _startMic() async {
     if (_micReady || _muted) return;
@@ -249,7 +295,7 @@ class RealtimeTutor {
     }
     _micReady = true;
     _micSub = stream.listen((chunk) {
-      if (_muted || chunk.isEmpty || _ws == null) return;
+      if (_holdMic || chunk.isEmpty || _ws == null) return;
       if (phase == RealtimePhase.connecting ||
           phase == RealtimePhase.stopped ||
           phase == RealtimePhase.error) {
@@ -263,9 +309,7 @@ class RealtimeTutor {
         pcm = _downsampleTo24k(pcm, _micRate);
       }
       if (pcm.isEmpty) return;
-      if (phase != RealtimePhase.tutorSpeaking) {
-        _reportLevel(_pcmRms(pcm));
-      }
+      _reportLevel(_pcmRms(pcm));
       _send({
         'type': 'input_audio_buffer.append',
         'audio': base64Encode(pcm),
@@ -295,6 +339,10 @@ class RealtimeTutor {
       case 'error':
         _onSessionError(event);
       case 'input_audio_buffer.speech_started':
+        if (_holdMic) {
+          _send({'type': 'input_audio_buffer.clear'});
+          break;
+        }
         unawaited(_interruptTutor());
         _setPhase(RealtimePhase.userSpeaking);
       case 'input_audio_buffer.speech_stopped':
@@ -308,6 +356,9 @@ class RealtimeTutor {
         }
       case 'response.output_audio.delta':
       case 'response.audio.delta':
+        if (phase != RealtimePhase.tutorSpeaking) {
+          _send({'type': 'input_audio_buffer.clear'});
+        }
         _setPhase(RealtimePhase.tutorSpeaking);
         final b64 = (event['delta'] as String?) ?? '';
         if (b64.isNotEmpty) {
@@ -330,6 +381,8 @@ class RealtimeTutor {
         unawaited(_pcm.finishUtterance());
       case 'response.done':
       case 'response.cancelled':
+        _playbackGateUntil =
+            DateTime.now().add(const Duration(milliseconds: 500));
         if (phase == RealtimePhase.tutorSpeaking) {
           _setPhase(RealtimePhase.listening);
         }

@@ -57,6 +57,38 @@ class FrostPanel extends StatelessWidget {
   }
 }
 
+/// Translucent chrome so wallpaper shows through rails and bars.
+class FrostChrome extends StatelessWidget {
+  const FrostChrome({
+    super.key,
+    required this.child,
+    this.alpha,
+  });
+
+  final Widget child;
+  final double? alpha;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final light = Theme.of(context).brightness == Brightness.light;
+    // Translucent wash only — BackdropFilter re-samples the wallpaper and
+    // composites a second, often misaligned copy under rails and bars.
+    final a = alpha ?? (light ? 0.58 : 0.48);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface.withValues(alpha: a),
+        border: Border(
+          bottom: BorderSide(
+            color: scheme.outline.withValues(alpha: light ? 0.14 : 0.10),
+          ),
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
 class GreenChip extends StatelessWidget {
   const GreenChip(this.text, {super.key});
   final String text;

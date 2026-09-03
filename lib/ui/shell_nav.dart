@@ -164,7 +164,9 @@ const kShellSections = <ShellSectionDef>[
   ),
 ];
 
-/// Width at which the icon rail + second column is usable.
+/// Deep link that opens Calendar (timetable) in Study Grove.
+const kTimetableAccessLink = 'studygrove://timetable';
+
 /// Same rule on every platform so a phone, or a skinny desktop window,
 /// never gets the Cursor-style rail stacked beside the page.
 const kDesktopChromeMinWidth = 800.0;

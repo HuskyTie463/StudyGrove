@@ -49,6 +49,10 @@ app.*.map.json
 .vs/
 .bundled_keys
 
+# AI proxy secrets — never commit
+server/.env
+server/.venv/
+
 # Apple signing material — never commit
 *.p8
 *.p12

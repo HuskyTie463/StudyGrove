@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/models.dart';
 import '../services/note_service.dart';
 import '../ui/math_text.dart';
 import '../ui/shared_ui.dart';
+import '../ui/shell_nav.dart';
 import '../ui/shell_scope.dart';
 
 class NotesPage extends StatelessWidget {
@@ -78,6 +80,16 @@ class NotesPage extends StatelessWidget {
     );
   }
 
+  Future<void> _copyTimetableLink(BuildContext context) async {
+    await Clipboard.setData(
+      const ClipboardData(text: kTimetableAccessLink),
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Copied')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -91,6 +103,14 @@ class NotesPage extends StatelessWidget {
             children: [
               Row(
                 children: [
+                  Tooltip(
+                    message: 'Copy a link that opens your timetable',
+                    child: TextButton.icon(
+                      onPressed: () => _copyTimetableLink(context),
+                      icon: const Icon(Icons.link, size: 18),
+                      label: const Text('Copy link'),
+                    ),
+                  ),
                   const Spacer(),
                   IconButton(
                     tooltip: 'Add note',

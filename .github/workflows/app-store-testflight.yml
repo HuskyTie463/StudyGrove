@@ -224,8 +224,7 @@ jobs:
 
       - name: Build macOS release
         env:
-          BUNDLED_STUDY_AI_KEY: ${{ secrets.BUNDLED_STUDY_AI_KEY }}
-          BUNDLED_OPENAI_TTS_KEY: ${{ secrets.BUNDLED_OPENAI_TTS_KEY }}
+          STUDY_AI_PROXY_URL: ${{ secrets.STUDY_AI_PROXY_URL }}
         run: |
           set -euo pipefail
           BUILD_NUMBER="${{ github.run_number }}"
@@ -234,16 +233,14 @@ jobs:
             BUILD_NUMBER=5
           fi
           echo "CFBundleVersion=$BUILD_NUMBER"
-          DART_DEFINES=()
-          if [ -n "${BUNDLED_STUDY_AI_KEY:-}" ]; then
-            DART_DEFINES+=(--dart-define="BUNDLED_STUDY_AI_KEY=$BUNDLED_STUDY_AI_KEY")
+          if [ -n "${STUDY_AI_PROXY_URL:-}" ]; then
+            flutter build macos --release \
+              --build-number="$BUILD_NUMBER" \
+              --dart-define="STUDY_AI_PROXY_URL=$STUDY_AI_PROXY_URL"
+          else
+            flutter build macos --release \
+              --build-number="$BUILD_NUMBER"
           fi
-          if [ -n "${BUNDLED_OPENAI_TTS_KEY:-}" ]; then
-            DART_DEFINES+=(--dart-define="BUNDLED_OPENAI_TTS_KEY=$BUNDLED_OPENAI_TTS_KEY")
-          fi
-          flutter build macos --release \
-            --build-number="$BUILD_NUMBER" \
-            "${DART_DEFINES[@]}"
 
       - name: Sign for Mac App Store and make pkg
         run: |
@@ -489,22 +486,20 @@ jobs:
 
       - name: Build App Store IPA
         env:
-          BUNDLED_STUDY_AI_KEY: ${{ secrets.BUNDLED_STUDY_AI_KEY }}
-          BUNDLED_OPENAI_TTS_KEY: ${{ secrets.BUNDLED_OPENAI_TTS_KEY }}
+          STUDY_AI_PROXY_URL: ${{ secrets.STUDY_AI_PROXY_URL }}
         run: |
           set -euo pipefail
           BUILD_NUMBER="${{ github.run_number }}"
-          DART_DEFINES=()
-          if [ -n "${BUNDLED_STUDY_AI_KEY:-}" ]; then
-            DART_DEFINES+=(--dart-define="BUNDLED_STUDY_AI_KEY=$BUNDLED_STUDY_AI_KEY")
+          if [ -n "${STUDY_AI_PROXY_URL:-}" ]; then
+            flutter build ipa --release \
+              --export-options-plist="$EXPORT_PLIST" \
+              --build-number="$BUILD_NUMBER" \
+              --dart-define="STUDY_AI_PROXY_URL=$STUDY_AI_PROXY_URL"
+          else
+            flutter build ipa --release \
+              --export-options-plist="$EXPORT_PLIST" \
+              --build-number="$BUILD_NUMBER"
           fi
-          if [ -n "${BUNDLED_OPENAI_TTS_KEY:-}" ]; then
-            DART_DEFINES+=(--dart-define="BUNDLED_OPENAI_TTS_KEY=$BUNDLED_OPENAI_TTS_KEY")
-          fi
-          flutter build ipa --release \
-            --export-options-plist="$EXPORT_PLIST" \
-            --build-number="$BUILD_NUMBER" \
-            "${DART_DEFINES[@]}"
           IPA="$(find build/ios/ipa -name '*.ipa' -type f | head -n 1)"
           if [ -z "$IPA" ]; then
             echo "IPA not found after flutter build ipa."

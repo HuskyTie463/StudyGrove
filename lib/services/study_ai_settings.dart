@@ -13,8 +13,8 @@ extension StudyAiProviderX on StudyAiProvider {
       };
 
   String get keyHint => switch (this) {
-        StudyAiProvider.openai => 'sk-…',
-        StudyAiProvider.anthropic => 'sk-ant-…',
+        StudyAiProvider.openai => 'OpenAI secret',
+        StudyAiProvider.anthropic => 'Anthropic secret',
       };
 
   String get defaultModel => switch (this) {
@@ -35,7 +35,7 @@ extension StudyAiProviderX on StudyAiProvider {
   }
 }
 
-/// Stores the user's API key on-device. Never sent to Firestore.
+/// On-device Study AI options. Provider keys live on the proxy, not in the app.
 class StudyAiSettings extends ChangeNotifier {
   StudyAiSettings();
 
@@ -47,13 +47,11 @@ class StudyAiSettings extends ChangeNotifier {
   static const _ttsPrefsKey = 'study_ai_openai_tts_key_fallback';
   static const _ttsCustomFlagKey = 'study_ai_using_custom_tts_key';
 
-  /// Built-in Study AI (Anthropic) key. Injected at build time so it is not
-  /// stored in the public GitHub source.
-  static const bundledKey = String.fromEnvironment('BUNDLED_STUDY_AI_KEY');
-
-  /// Built-in OpenAI key for Listen / Voice Chat. Injected at build time.
-  static const bundledOpenAiTtsKey =
-      String.fromEnvironment('BUNDLED_OPENAI_TTS_KEY');
+  /// Where the app sends Study AI / TTS / realtime-session requests.
+  static const proxyUrl = String.fromEnvironment(
+    'STUDY_AI_PROXY_URL',
+    defaultValue: 'http://127.0.0.1:8787',
+  );
 
   static const _secure = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -66,40 +64,43 @@ class StudyAiSettings extends ChangeNotifier {
   bool _usingCustomTts = false;
   bool ready = false;
 
-  bool get hasKey => _apiKey != null && _apiKey!.trim().isNotEmpty;
-
   bool get usingCustomKey => _usingCustom;
-
-  String? get apiKey => _apiKey;
 
   bool get usingCustomTtsKey => _usingCustomTts;
 
-  /// OpenAI key used for Listen neural speech. Reuses Study AI when that
-  /// provider is already OpenAI; otherwise the Listen key (custom or built-in).
+  bool get usesProxy => proxyUrl.trim().isNotEmpty && !_usingCustom;
+
+  bool get usesSpeechProxy => proxyUrl.trim().isNotEmpty && !_usingCustomTts;
+
+  /// True when Study AI can run (signed-in proxy, or a user-supplied key).
+  bool get hasKey => usesProxy || (_apiKey != null && _apiKey!.trim().isNotEmpty);
+
+  /// Custom key only. Never a bundled/default secret.
+  String? get apiKey {
+    if (_usingCustom) {
+      final k = _apiKey?.trim() ?? '';
+      return k.isEmpty ? null : k;
+    }
+    return null;
+  }
+
   String? get openAiSpeechKey {
-    if (provider == StudyAiProvider.openai && _isOpenAiKey(_apiKey)) {
+    if (_usingCustomTts && _isOpenAiKey(_ttsOpenAiKey)) {
+      return _ttsOpenAiKey!.trim();
+    }
+    if (_usingCustom &&
+        provider == StudyAiProvider.openai &&
+        _isOpenAiKey(_apiKey)) {
       return _apiKey!.trim();
     }
-    if (_isOpenAiKey(_ttsOpenAiKey)) return _ttsOpenAiKey!.trim();
-    return _isOpenAiKey(bundledOpenAiTtsKey) ? bundledOpenAiTtsKey : null;
+    return null;
   }
 
-  bool get hasOpenAiSpeech => openAiSpeechKey != null;
+  bool get hasOpenAiSpeech => usesSpeechProxy || openAiSpeechKey != null;
 
   bool get needsSeparateListenKey =>
-      provider != StudyAiProvider.openai || !_isOpenAiKey(_apiKey);
-
-  String get maskedTtsKey {
-    final k = openAiSpeechKey ?? '';
-    if (k.length < 8) return hasOpenAiSpeech ? '••••' : '';
-    return '${k.substring(0, 4)}••••${k.substring(k.length - 4)}';
-  }
-
-  String get maskedKey {
-    final k = _apiKey?.trim() ?? '';
-    if (k.length < 8) return hasKey ? '••••' : '';
-    return '${k.substring(0, 4)}••••${k.substring(k.length - 4)}';
-  }
+      !usesSpeechProxy &&
+      (provider != StudyAiProvider.openai || !_isOpenAiKey(_apiKey));
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -118,17 +119,13 @@ class StudyAiSettings extends ChangeNotifier {
     _ttsOpenAiKey ??= prefs.getString(_ttsPrefsKey);
     _usingCustomTts = prefs.getBool(_ttsCustomFlagKey) ?? false;
     if (!_usingCustomTts || !_isOpenAiKey(_ttsOpenAiKey)) {
-      _ttsOpenAiKey = _isOpenAiKey(bundledOpenAiTtsKey) ? bundledOpenAiTtsKey : null;
+      _ttsOpenAiKey = null;
       _usingCustomTts = false;
     }
-    if (_apiKey == null || _apiKey!.trim().isEmpty || !_usingCustom) {
-      _apiKey = bundledKey.trim().isEmpty ? null : bundledKey;
+    if (!_usingCustom || _apiKey == null || _apiKey!.trim().isEmpty) {
+      _apiKey = null;
       _usingCustom = false;
-      if (_apiKey != null) {
-        provider = StudyAiProvider.anthropic;
-      } else {
-        provider = StudyAiProviderX.fromStorage(prefs.getString(_providerKey));
-      }
+      provider = StudyAiProviderX.fromStorage(prefs.getString(_providerKey));
     } else {
       provider = StudyAiProviderX.fromStorage(prefs.getString(_providerKey));
       if (_apiKey!.startsWith('sk-ant-')) {
@@ -151,11 +148,9 @@ class StudyAiSettings extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     if (key.isEmpty) {
       await _clearStoredKey();
-      _apiKey = bundledKey.trim().isEmpty ? null : bundledKey;
+      _apiKey = null;
       _usingCustom = false;
-      provider = StudyAiProvider.anthropic;
       await prefs.setBool(_customFlagKey, false);
-      await prefs.setString(_providerKey, provider.id);
       notifyListeners();
       return;
     }
@@ -183,7 +178,7 @@ class StudyAiSettings extends ChangeNotifier {
     final key = raw.trim();
     final prefs = await SharedPreferences.getInstance();
     if (key.isEmpty) {
-      _ttsOpenAiKey = _isOpenAiKey(bundledOpenAiTtsKey) ? bundledOpenAiTtsKey : null;
+      _ttsOpenAiKey = null;
       _usingCustomTts = false;
       try {
         await _secure.delete(key: _ttsSecureKey);
@@ -195,7 +190,7 @@ class StudyAiSettings extends ChangeNotifier {
     }
     if (!_isOpenAiKey(key)) {
       throw ListenKeyException(
-        'Listen voices need an OpenAI key (starts with sk-, not sk-ant-).',
+        'Listen voices need an OpenAI key, not an Anthropic key.',
       );
     }
     _ttsOpenAiKey = key;
@@ -223,7 +218,6 @@ class StudyAiSettings extends ChangeNotifier {
     await prefs.remove(_prefsFallbackKey);
   }
 
-  /// Drop a custom key.
   Future<void> resetToBundled() => setApiKey('');
 
   Future<void> clear() async {
