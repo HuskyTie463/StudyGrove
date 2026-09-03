@@ -64,20 +64,37 @@ class StudyDayTotal {
   final int minutes;
 }
 
+enum SubjectKind {
+  study,
+  hobby;
+
+  static SubjectKind fromStorage(String? value) {
+    return value == hobby.name ? hobby : study;
+  }
+
+  bool get isHobby => this == hobby;
+}
+
 class Subject {
   Subject({
     required this.id,
     required this.name,
     required this.colorValue,
     this.code,
+    this.kind = SubjectKind.study,
+    this.weekGoalHours,
   });
 
   final String id;
   final String name;
   final String? code;
   final int colorValue;
+  final SubjectKind kind;
+  final int? weekGoalHours;
 
   Color get color => Color(colorValue);
+
+  bool get isHobby => kind.isHobby;
 
   String get label {
     final c = code?.trim();

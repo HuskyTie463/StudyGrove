@@ -49,6 +49,7 @@ class StudyTimePage extends StatelessWidget {
                       subjects: subjects,
                       allSubjects: all,
                       totals: totals,
+                      subjectService: subjectService,
                       studyTimeService: studyTimeService,
                     );
                   },
@@ -62,6 +63,8 @@ class StudyTimePage extends StatelessWidget {
   }
 }
 
+enum _TimeLane { subjects, hobbies }
+
 enum _TimeOverview { graph, rings }
 
 class _StudyTimeBody extends StatefulWidget {
@@ -70,6 +73,7 @@ class _StudyTimeBody extends StatefulWidget {
     required this.subjects,
     required this.allSubjects,
     required this.totals,
+    required this.subjectService,
     required this.studyTimeService,
   });
 
@@ -77,6 +81,7 @@ class _StudyTimeBody extends StatefulWidget {
   final List<Subject> subjects;
   final List<Subject> allSubjects;
   final List<StudyDayTotal> totals;
+  final SubjectService subjectService;
   final StudyTimeService studyTimeService;
 
   @override
@@ -84,15 +89,25 @@ class _StudyTimeBody extends StatefulWidget {
 }
 
 class _StudyTimeBodyState extends State<_StudyTimeBody> {
+  _TimeLane _lane = _TimeLane.subjects;
   _TimeOverview _overview = _TimeOverview.graph;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final subjects = widget.subjects;
-    final ringSubjects = widget.allSubjects;
+    final compact = MediaQuery.sizeOf(context).width < 800;
+    final hobbiesLane = _lane == _TimeLane.hobbies;
+    final laneAll = widget.allSubjects
+        .where((s) => hobbiesLane ? s.isHobby : !s.isHobby)
+        .toList();
+    final subjects = widget.subjects
+        .where((s) => hobbiesLane ? s.isHobby : !s.isHobby)
+        .toList();
+    final visible = subjects.isEmpty ? laneAll : subjects;
+    final ringSubjects = visible;
     final totals = widget.totals;
     final studyTimeService = widget.studyTimeService;
+    final focusSubject = visible.length == 1 ? visible.first : null;
     final today = dayKey(DateTime.now());
     final weekStart = _mondayOf(DateTime.now());
     final weekDays = [
@@ -132,7 +147,43 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SubjectFilter(allSubjects: widget.allSubjects),
+        Row(
+          children: [
+            Expanded(
+              child: SgSegmented<_TimeLane>(
+                selected: _lane,
+                onChanged: (v) => setState(() => _lane = v),
+                segments: [
+                  ButtonSegment(
+                    value: _TimeLane.subjects,
+                    label: Text(compact ? 'Subjects' : 'Time for subjects'),
+                    icon: compact
+                        ? null
+                        : const Icon(Icons.menu_book_outlined, size: 18),
+                  ),
+                  ButtonSegment(
+                    value: _TimeLane.hobbies,
+                    label: Text(compact ? 'Hobbies' : 'For hobbies'),
+                    icon: compact
+                        ? null
+                        : const Icon(Icons.interests_outlined, size: 18),
+                  ),
+                ],
+              ),
+            ),
+            if (hobbiesLane)
+              IconButton(
+                tooltip: 'Add hobby',
+                onPressed: () => _addHobby(context),
+                icon: const Icon(Icons.add_circle_outline),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _SubjectFilter(
+          allSubjects: laneAll,
+          allLabel: hobbiesLane ? 'All hobbies' : 'All subjects',
+        ),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -157,8 +208,13 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
             if (_overview == _TimeOverview.rings) ...[
               const SizedBox(width: 8),
               TextButton(
-                onPressed: () => _changeGoal(context, studyTimeService),
-                child: const Text('Change goal'),
+                onPressed: () => _changeGoal(
+                  context,
+                  studyTimeService,
+                  focusSubject,
+                  laneAll,
+                ),
+                child: Text(compact ? 'Goal' : 'Change goal'),
               ),
             ],
           ],
@@ -167,28 +223,27 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
         FrostPanel(
           opacity: widget.panelOpacity,
           child: _LiveStudyRow(
-            subjects: ringSubjects,
+            subjects: laneAll,
+            allSubjects: widget.allSubjects,
             studyTimeService: studyTimeService,
+            hobbiesLane: hobbiesLane,
           ),
         ),
         const SizedBox(height: 14),
         Expanded(
           child: FrostPanel(
             opacity: widget.panelOpacity,
-            child: (_overview == _TimeOverview.rings
-                    ? ringSubjects
-                    : subjects)
-                .isEmpty
-                ? Text(
-                    'Add a subject first, then you can time study against it.',
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.84),
-                    ),
+            child: visible.isEmpty
+                ? _EmptyLane(
+                    hobbies: hobbiesLane,
+                    onAddHobby:
+                        hobbiesLane ? () => _addHobby(context) : null,
+                    color: scheme.onSurface.withValues(alpha: 0.84),
                   )
                 : SizedBox.expand(
                     child: _overview == _TimeOverview.graph
                         ? _WeekSubjectChart(
-                            subjects: subjects,
+                            subjects: visible,
                             days: weekDays,
                             minutesOn: minutesOn,
                           )
@@ -198,8 +253,10 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
                               for (final s in ringSubjects)
                                 s.id: weekFor(s.id),
                             },
-                            targetMinutes:
-                                studyTimeService.weekGoalMinutes,
+                            targetMinutes: {
+                              for (final s in ringSubjects)
+                                s.id: studyTimeService.goalMinutesFor(s),
+                            },
                             onOpen: openSubject,
                           ),
                   ),
@@ -209,23 +266,137 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
     );
   }
 
+  Future<void> _addHobby(BuildContext context) async {
+    final nameCtrl = TextEditingController();
+    var colorValue = kSubjectColorPalette.first;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Add hobby'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    hintText: 'e.g., Piano',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Colour',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(ctx)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.88),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final c in kSubjectColorPalette)
+                      InkWell(
+                        onTap: () => setDialogState(() => colorValue = c),
+                        borderRadius: BorderRadius.circular(999),
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: Color(c),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: colorValue == c
+                                  ? Theme.of(ctx).colorScheme.onSurface
+                                  : Theme.of(ctx)
+                                      .colorScheme
+                                      .outline
+                                      .withValues(alpha: 0.35),
+                              width: colorValue == c ? 2.5 : 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final name = nameCtrl.text.trim();
+    nameCtrl.dispose();
+    if (ok != true || name.isEmpty) return;
+    await widget.subjectService.addSubject(
+      name: name,
+      colorValue: colorValue,
+      kind: SubjectKind.hobby,
+    );
+  }
+
   Future<void> _changeGoal(
     BuildContext context,
     StudyTimeService studyTimeService,
+    Subject? focusSubject,
+    List<Subject> laneSubjects,
   ) async {
-    final current = studyTimeService.weekGoalHours;
+    final editingSubject = focusSubject;
+    final current = editingSubject == null
+        ? studyTimeService.weekGoalHours
+        : studyTimeService.goalHoursFor(editingSubject);
+    final combined = studyTimeService.combinedGoalHours(laneSubjects);
     final picked = await showDialog<int>(
       context: context,
       builder: (context) {
-        var hours = current;
+        var hours = current.clamp(1, 20);
         return AlertDialog(
-          title: const Text('Weekly goal'),
+          title: Text(
+            editingSubject == null
+                ? 'Default weekly goal'
+                : 'Weekly goal',
+          ),
           content: StatefulBuilder(
             builder: (context, setLocal) {
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('$hours hours per subject'),
+                  Text(
+                    editingSubject == null
+                        ? '$hours hours for subjects without their own goal'
+                        : '$hours hours for ${editingSubject.name}',
+                  ),
+                  if (editingSubject == null && laneSubjects.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'All together: ${combined}h this week',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
                   Slider(
                     value: hours.toDouble(),
                     min: 1,
@@ -251,9 +422,50 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
         );
       },
     );
-    if (picked != null) {
+    if (picked == null) return;
+    if (editingSubject != null) {
+      await widget.subjectService.updateWeekGoalHours(
+        id: editingSubject.id,
+        hours: picked,
+      );
+    } else {
       await studyTimeService.setWeekGoalHours(picked);
     }
+  }
+}
+
+class _EmptyLane extends StatelessWidget {
+  const _EmptyLane({
+    required this.hobbies,
+    required this.color,
+    this.onAddHobby,
+  });
+
+  final bool hobbies;
+  final Color color;
+  final VoidCallback? onAddHobby;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          hobbies
+              ? 'Add a hobby first, then you can time it.'
+              : 'Add a subject first, then you can time study against it.',
+          style: TextStyle(color: color),
+        ),
+        if (onAddHobby != null) ...[
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: onAddHobby,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Add hobby'),
+          ),
+        ],
+      ],
+    );
   }
 }
 
@@ -408,7 +620,7 @@ class _WeekRings extends StatelessWidget {
 
   final List<Subject> subjects;
   final Map<String, int> weekMinutes;
-  final int targetMinutes;
+  final Map<String, int> targetMinutes;
   final ValueChanged<Subject> onOpen;
 
   @override
@@ -432,7 +644,7 @@ class _WeekRings extends StatelessWidget {
                 _SubjectHourCircle(
                   subject: s,
                   minutes: weekMinutes[s.id] ?? 0,
-                  targetMinutes: targetMinutes,
+                  targetMinutes: targetMinutes[s.id] ?? 0,
                   size: ring,
                   onTap: () => onOpen(s),
                 ),
@@ -576,9 +788,13 @@ class _FillCirclePainter extends CustomPainter {
 }
 
 class _SubjectFilter extends StatelessWidget {
-  const _SubjectFilter({required this.allSubjects});
+  const _SubjectFilter({
+    required this.allSubjects,
+    this.allLabel = 'All subjects',
+  });
 
   final List<Subject> allSubjects;
+  final String allLabel;
 
   static const _allValue = '__all__';
 
@@ -590,15 +806,15 @@ class _SubjectFilter extends StatelessWidget {
         ? current
         : _allValue;
     return DropdownButtonFormField<String>(
-      key: ValueKey(value),
+      key: ValueKey('$allLabel-$value'),
       initialValue: value,
       isExpanded: true,
-      decoration: const InputDecoration(
-        labelText: 'Subject',
+      decoration: InputDecoration(
+        labelText: allLabel == 'All hobbies' ? 'Hobby' : 'Subject',
         isDense: true,
       ),
       items: [
-        const DropdownMenuItem(value: _allValue, child: Text('All subjects')),
+        DropdownMenuItem(value: _allValue, child: Text(allLabel)),
         for (final s in allSubjects)
           DropdownMenuItem(value: s.id, child: Text(s.label)),
       ],
@@ -616,11 +832,15 @@ class _SubjectFilter extends StatelessWidget {
 class _LiveStudyRow extends StatefulWidget {
   const _LiveStudyRow({
     required this.subjects,
+    required this.allSubjects,
     required this.studyTimeService,
+    required this.hobbiesLane,
   });
 
   final List<Subject> subjects;
+  final List<Subject> allSubjects;
   final StudyTimeService studyTimeService;
+  final bool hobbiesLane;
 
   @override
   State<_LiveStudyRow> createState() => _LiveStudyRowState();
@@ -636,44 +856,65 @@ class _LiveStudyRowState extends State<_LiveStudyRow> {
     final mm = elapsed.inMinutes.toString().padLeft(2, '0');
     final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
     final focusId = ShellScope.maybeOf(context)?.subjectId;
+    final liveId = studyTimeService.activeSubjectId;
+    Subject? liveSubject;
+    if (liveId != null) {
+      for (final s in widget.allSubjects) {
+        if (s.id == liveId) {
+          liveSubject = s;
+          break;
+        }
+      }
+    }
+    final running = liveSubject;
+    final dropdownSubjects = [
+      ...subjects,
+      if (running != null && !subjects.any((s) => s.id == running.id)) running,
+    ];
     final selectedId = live
-        ? studyTimeService.activeSubjectId
+        ? liveId
         : (focusId != null && subjects.any((s) => s.id == focusId)
             ? focusId
             : null);
     final dropdownValue = (selectedId != null &&
-            subjects.any((s) => s.id == selectedId))
+            dropdownSubjects.any((s) => s.id == selectedId))
         ? selectedId
         : '__all__';
+    final allLabel = widget.hobbiesLane ? 'All hobbies' : 'All subjects';
+    final itemLabel = widget.hobbiesLane ? 'Hobby' : 'Subject';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Studying now',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+        Text(
+          widget.hobbiesLane ? 'Hobby now' : 'Studying now',
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
         ),
         const SizedBox(height: 10),
-        if (subjects.isEmpty)
-          const Text('Add a subject to start a timer.')
+        if (dropdownSubjects.isEmpty)
+          Text(
+            widget.hobbiesLane
+                ? 'Add a hobby to start a timer.'
+                : 'Add a subject to start a timer.',
+          )
         else
           Row(
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  key: ValueKey(dropdownValue),
+                  key: ValueKey('$allLabel-$dropdownValue'),
                   initialValue: dropdownValue,
                   isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Subject',
+                  decoration: InputDecoration(
+                    labelText: itemLabel,
                     isDense: true,
                   ),
                   items: [
-                    const DropdownMenuItem(
+                    DropdownMenuItem(
                       value: '__all__',
-                      child: Text('All subjects'),
+                      child: Text(allLabel),
                     ),
-                    for (final s in subjects)
+                    for (final s in dropdownSubjects)
                       DropdownMenuItem(value: s.id, child: Text(s.label)),
                   ],
                   onChanged: live
@@ -707,8 +948,12 @@ class _LiveStudyRowState extends State<_LiveStudyRow> {
                   final id = selectedId;
                   if (id == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Pick a subject to start the timer.'),
+                      SnackBar(
+                        content: Text(
+                          widget.hobbiesLane
+                              ? 'Pick a hobby to start the timer.'
+                              : 'Pick a subject to start the timer.',
+                        ),
                       ),
                     );
                     return;

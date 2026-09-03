@@ -19,6 +19,8 @@ class SubjectService {
           name: (data['name'] as String?) ?? '',
           code: data['code'] as String?,
           colorValue: (data['colorValue'] as int?) ?? kSubjectColorPalette.first,
+          kind: SubjectKind.fromStorage(data['kind'] as String?),
+          weekGoalHours: (data['weekGoalHours'] as num?)?.toInt(),
         );
       }).toList();
     });
@@ -28,13 +30,20 @@ class SubjectService {
     required String name,
     String? code,
     required int colorValue,
+    SubjectKind kind = SubjectKind.study,
+    int? weekGoalHours,
   }) async {
-    final doc = await _col.add({
+    final payload = <String, dynamic>{
       'name': name.trim(),
       'code': code?.trim().isEmpty == true ? null : code?.trim(),
       'colorValue': colorValue,
+      'kind': kind.name,
       'createdAt': FieldValue.serverTimestamp(),
-    });
+    };
+    if (weekGoalHours != null) {
+      payload['weekGoalHours'] = weekGoalHours.clamp(1, 40);
+    }
+    final doc = await _col.add(payload);
     return doc.id;
   }
 
@@ -43,11 +52,23 @@ class SubjectService {
     required String name,
     String? code,
     required int colorValue,
+    SubjectKind kind = SubjectKind.study,
   }) async {
     await _col.doc(id).update({
       'name': name.trim(),
       'code': code?.trim().isEmpty == true ? null : code?.trim(),
       'colorValue': colorValue,
+      'kind': kind.name,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> updateWeekGoalHours({
+    required String id,
+    required int hours,
+  }) async {
+    await _col.doc(id).update({
+      'weekGoalHours': hours.clamp(1, 40),
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }

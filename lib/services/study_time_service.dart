@@ -16,10 +16,24 @@ class StudyTimeService extends ChangeNotifier {
   final _db = FirebaseFirestore.instance;
   static const _goalPrefsKey = 'study_week_goal_hours';
 
-  /// Weekly hours each subject ring fills toward. Defaults to 10.
+  /// Fallback weekly hours when a subject has no goal of its own. Defaults to 10.
   int weekGoalHours = 10;
 
   int get weekGoalMinutes => weekGoalHours * 60;
+
+  int goalHoursFor(Subject subject) =>
+      resolveWeekGoalHours(subject.weekGoalHours, weekGoalHours);
+
+  int goalMinutesFor(Subject subject) => goalHoursFor(subject) * 60;
+
+  int combinedGoalHours(Iterable<Subject> subjects) =>
+      combinedWeekGoalHours(
+        subjects.map((s) => s.weekGoalHours),
+        weekGoalHours,
+      );
+
+  int combinedGoalMinutes(Iterable<Subject> subjects) =>
+      combinedGoalHours(subjects) * 60;
 
   Future<void> _loadGoal() async {
     final prefs = await SharedPreferences.getInstance();
@@ -113,6 +127,16 @@ class StudyTimeService extends ChangeNotifier {
     _tick?.cancel();
     super.dispose();
   }
+}
+
+int resolveWeekGoalHours(int? subjectHours, int fallbackHours) {
+  return (subjectHours ?? fallbackHours).clamp(1, 40);
+}
+
+int combinedWeekGoalHours(Iterable<int?> subjectHours, int fallbackHours) {
+  final list = subjectHours.toList();
+  if (list.isEmpty) return fallbackHours.clamp(1, 40);
+  return list.fold(0, (n, hours) => n + resolveWeekGoalHours(hours, fallbackHours));
 }
 
 String formatStudyMinutes(int minutes) {

@@ -38,6 +38,7 @@ class _SubjectsPageState extends State<SubjectsPage> {
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final codeCtrl = TextEditingController(text: existing?.code ?? '');
     var colorValue = existing?.colorValue ?? kSubjectColorPalette.first;
+    var kind = existing?.kind ?? SubjectKind.study;
 
     final ok = await showDialog<bool>(
       context: context,
@@ -63,6 +64,16 @@ class _SubjectsPageState extends State<SubjectsPage> {
                   decoration: const InputDecoration(
                     labelText: 'Code (optional)',
                     hintText: 'e.g., MATH101',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Hobby'),
+                  subtitle: const Text('Times on Time → Hobbies'),
+                  value: kind.isHobby,
+                  onChanged: (v) => setDialogState(
+                    () => kind = v ? SubjectKind.hobby : SubjectKind.study,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -130,6 +141,7 @@ class _SubjectsPageState extends State<SubjectsPage> {
         name: name,
         code: code.isEmpty ? null : code,
         colorValue: colorValue,
+        kind: kind,
       );
     } else {
       await widget.subjectService.updateSubject(
@@ -137,6 +149,7 @@ class _SubjectsPageState extends State<SubjectsPage> {
         name: name,
         code: code.isEmpty ? null : code,
         colorValue: colorValue,
+        kind: kind,
       );
     }
   }
@@ -441,6 +454,10 @@ class _SubjectsPageState extends State<SubjectsPage> {
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
+                                    if (s.isHobby) ...[
+                                      const SizedBox(height: 4),
+                                      const GreenChip('Hobby'),
+                                    ],
                                   ],
                                 ),
                               ),
