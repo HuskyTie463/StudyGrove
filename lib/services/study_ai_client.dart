@@ -743,6 +743,7 @@ doNotMap must name at least one tempting false mapping.
     if (start >= 0 && end > start) {
       text = text.substring(start, end + 1);
     }
+    text = MathFormat.repairModelJson(text);
     final decoded = jsonDecode(text);
     if (decoded is! Map) {
       throw StudyAiException('The model did not return a JSON object.');

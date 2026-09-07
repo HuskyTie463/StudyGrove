@@ -48,10 +48,19 @@ class MathFormat {
       if (span.isMath) {
         buf.write(span.raw);
       } else {
-        buf.write(_decorateProse(span.prose));
+        buf.write(_promoteTexChunks(_decorateProse(span.prose)));
       }
     }
     return buf.toString();
+  }
+
+  /// Doubles a lone JSON backslash before TeX words that JSON would eat
+  /// (`\frac` → form-feed + `rac`). Safe for already-escaped `\\frac`.
+  static String repairModelJson(String json) {
+    return json.replaceAllMapped(
+      RegExp(r'(?<!\\)\\([bfnrt][A-Za-z]+)'),
+      (m) => '\\\\${m[1]}',
+    );
   }
 
   /// Strips markdown chrome, unifies math delimiters, and tidies model junk
@@ -64,13 +73,18 @@ class MathFormat {
     s = s.replaceAll('&amp;', '&');
     s = s.replaceAll('&lt;', '<');
     s = s.replaceAll('&gt;', '>');
+    s = _repairDecodedTex(s);
+
+    // Models / JSON often write `\$...\$` — treat those as real delimiters.
+    s = s.replaceAll(r'\\$', r'$');
+    s = s.replaceAll(r'\$', r'$');
 
     // JSON / markdown leftovers: `\\frac` → `\frac`, `\\(` → `\(`
     s = s.replaceAll(r'\\(', r'\(');
     s = s.replaceAll(r'\\)', r'\)');
     s = s.replaceAll(r'\\[', r'\[');
     s = s.replaceAll(r'\\]', r'\]');
-    s = s.replaceAllMapped(RegExp(r'\\\\([a-zA-Z]+)'), (m) => '\\${m[1]}');
+    s = s.replaceAllMapped(RegExp(r'\\+([a-zA-Z]+)'), (m) => '\\${m[1]}');
 
     s = s.replaceAllMapped(
       RegExp(r'\\\((.+?)\\\)', dotAll: true),
@@ -81,6 +95,7 @@ class MathFormat {
       (m) => '\$\$${m[1]!.trim()}\$\$',
     );
 
+    s = _closeUnpairedDollars(s);
     s = _mapOutsideMath(s, _stripMarkdown);
     s = _mapOutsideMath(s, _unicodeMathHints);
     s = s.replaceAll('**', '');
@@ -105,7 +120,9 @@ class MathFormat {
 
   /// Makes TeX more likely to parse in flutter_math_fork.
   static String sanitizeTex(String tex) {
-    var s = tex.trim();
+    var s = stripMathDelimiters(tex);
+    s = _repairDecodedTex(s);
+    s = s.replaceAllMapped(RegExp(r'\\+([a-zA-Z]+)'), (m) => '\\${m[1]}');
     s = s.replaceAll(r'\dfrac', r'\frac');
     s = s.replaceAll(r'\tfrac', r'\frac');
     s = s.replaceAll(RegExp(r'\\displaystyle\s*'), '');
@@ -127,6 +144,88 @@ class MathFormat {
     s = s.replaceAll(RegExp(r'\s*&=\s*'), ' = ');
     s = s.replaceAll('&', ' ');
     return s.trim();
+  }
+
+  /// Drop leftover `$` / `\(`/`\[` so flutter_math_fork sees a math body.
+  static String stripMathDelimiters(String tex) {
+    var s = tex.trim();
+    if (s.startsWith(r'$$') && s.endsWith(r'$$') && s.length > 4) {
+      s = s.substring(2, s.length - 2).trim();
+    }
+    if (s.startsWith(r'$') && s.endsWith(r'$') && s.length > 2) {
+      s = s.substring(1, s.length - 1).trim();
+    }
+    if (s.startsWith(r'\(') && s.endsWith(r'\)') && s.length > 4) {
+      s = s.substring(2, s.length - 2).trim();
+    }
+    if (s.startsWith(r'\[') && s.endsWith(r'\]') && s.length > 4) {
+      s = s.substring(2, s.length - 2).trim();
+    }
+    return s.replaceAll(r'$', '').trim();
+  }
+
+  /// Alternate bodies to try when the first TeX parse fails.
+  static List<String> texCandidates(String tex) {
+    final seen = <String>{};
+    final out = <String>[];
+    void add(String s) {
+      final t = s.trim();
+      if (t.isEmpty || !seen.add(t)) return;
+      out.add(t);
+    }
+
+    add(stackedTex(tex));
+    add(sanitizeTex(tex));
+    final stacked = stackedTex(tex);
+    add(stacked.replaceAllMapped(
+      RegExp(r'\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}'),
+      (m) => '\\frac{${m[1]!.trim()}}{${m[2]!.trim()}}',
+    ));
+    add(stacked.replaceAll('=', ' = '));
+    add(stacked.replaceAllMapped(RegExp(r'\^\{([^{}]+)\}'), (m) => '^${m[1]}'));
+    return out;
+  }
+
+  static bool containsTex(String s) =>
+      RegExp(r'\\[a-zA-Z]+').hasMatch(s) ||
+      s.contains(r'\frac') ||
+      (s.contains(r'$') && RegExp(r'[=^_{}]').hasMatch(s));
+
+  /// Last-resort readable line — never dump `$` or `\frac` source.
+  static String prettyFallback(String tex) {
+    var s = sanitizeTex(tex);
+    s = s.replaceAll(r'\times', '×');
+    s = s.replaceAll(r'\cdot', '·');
+    s = s.replaceAll(r'\div', '÷');
+    s = s.replaceAll(r'\pm', '±');
+    s = s.replaceAll(r'\pi', 'π');
+    s = s.replaceAll(r'\neq', '≠');
+    s = s.replaceAll(r'\le', '≤');
+    s = s.replaceAll(r'\leq', '≤');
+    s = s.replaceAll(r'\ge', '≥');
+    s = s.replaceAll(r'\geq', '≥');
+    s = s.replaceAll(r'\approx', '≈');
+    s = s.replaceAll(r'\infty', '∞');
+    s = s.replaceAllMapped(
+      RegExp(r'\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}'),
+      (m) {
+        final a = m[1]!.trim();
+        final b = m[2]!.trim();
+        if (a == '1' && b == '2') return '½';
+        if (a == '1' && b == '4') return '¼';
+        if (a == '3' && b == '4') return '¾';
+        return '$a/$b';
+      },
+    );
+    s = s.replaceAllMapped(RegExp(r'\^\{([^{}]+)\}'), (m) {
+      return m[1]!.split('').map((c) => _superOut[c] ?? c).join();
+    });
+    s = s.replaceAllMapped(RegExp(r'\^([A-Za-z0-9])'), (m) {
+      return _superOut[m[1]!] ?? m[1]!;
+    });
+    s = s.replaceAll(RegExp(r'\\[a-zA-Z]+'), ' ');
+    s = s.replaceAll(RegExp(r'[{}\\$]+'), '');
+    return s.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   static String forSpeech(String raw) {
@@ -163,10 +262,9 @@ class MathFormat {
     bool at(String lit) => i + lit.length <= n && raw.startsWith(lit, i);
 
     while (i < n) {
+      // `\$` is a delimiter (models escape dollars), not a literal `$`.
       if (raw[i] == r'\' && i + 1 < n && raw[i + 1] == r'$') {
-        prose.write(r'$');
-        i += 2;
-        continue;
+        i += 1;
       }
 
       if (at(r'$$')) {
@@ -281,6 +379,19 @@ class MathFormat {
     return s;
   }
 
+  static const _superOut = {
+    '1': '¹',
+    '2': '²',
+    '3': '³',
+    '4': '⁴',
+    '5': '⁵',
+    '6': '⁶',
+    '7': '⁷',
+    '8': '⁸',
+    '9': '⁹',
+    '0': '⁰',
+  };
+
   static const _superMap = {
     '¹': '1',
     '²': '2',
@@ -371,10 +482,55 @@ class MathFormat {
       return '\$\\frac{${_atom(a)}}{${_atom(b)}}\$';
     });
     s = s.replaceAllMapped(
-      RegExp(r'(?<![\$\\])\\frac\s*\{[^{}]+\}\s*\{[^{}]+\}'),
-      (m) => '\$${m[0]}\$',
+      RegExp(r'(?<![\$])\\+frac\s*\{[^{}]+\}\s*\{[^{}]+\}'),
+      (m) {
+        final body = m[0]!.replaceAllMapped(
+          RegExp(r'\\+frac'),
+          (_) => r'\frac',
+        );
+        return '\$$body\$';
+      },
     );
     return s;
+  }
+
+  static String _promoteTexChunks(String prose) {
+    if (!prose.contains(r'\frac') &&
+        !prose.contains(r'\sqrt') &&
+        !prose.contains(r'\dfrac')) {
+      return prose;
+    }
+    return prose.replaceAllMapped(
+      RegExp(
+        r'(?:[A-Za-z][A-Za-z0-9]{0,11}\s*=\s*)?'
+        r'\$*\\+(?:frac|dfrac|tfrac|sqrt)(?:\s*\{[^{}]*\}\s*){1,2}\$*'
+        r'(?:[A-Za-z0-9]+(?:\^\{?[0-9]+\}?)?)*',
+      ),
+      (m) {
+        final chunk = m[0]!.replaceAll('\$', '').trim();
+        if (chunk.isEmpty) return m[0]!;
+        return '\$$chunk\$';
+      },
+    );
+  }
+
+  static String _closeUnpairedDollars(String s) {
+    return s.split('\n').map((line) {
+      if (line.contains(r'$$')) return line;
+      final n = RegExp(r'\$').allMatches(line).length;
+      if (n == 1) return '$line\$';
+      return line;
+    }).join('\n');
+  }
+
+  static String _repairDecodedTex(String s) {
+    return s
+        .replaceAll('\u000crac', r'\frac')
+        .replaceAll('\u0008eta', r'\beta')
+        .replaceAll('\u0008egin', r'\begin')
+        .replaceAll('\u0009imes', r'\times')
+        .replaceAll('\u0009heta', r'\theta')
+        .replaceAll('\u0009ext', r'\text');
   }
 
   static String _atom(String s) {
