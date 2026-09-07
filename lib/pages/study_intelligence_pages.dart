@@ -344,7 +344,7 @@ class _LectureLabPageState extends State<LectureLabPage> {
                       ),
                       SizedBox(height: t.gap(0.75)),
                       if (summary != null)
-                        Text(summary, style: const TextStyle(height: 1.4))
+                        MathText(summary, style: const TextStyle(height: 1.4))
                       else
                         Text(
                           widget.service.supportsAi
@@ -394,6 +394,59 @@ class _LectureLabPageState extends State<LectureLabPage> {
                           'No learning objectives stored for this lecture.',
                           style: TextStyle(color: t.textMuted, height: 1.4),
                         ),
+                      if (hasTopics) ...[
+                        SizedBox(height: t.gap(2)),
+                        Text(
+                          'Recall cards',
+                          style: Theme.of(ctx).textTheme.titleMedium,
+                        ),
+                        SizedBox(height: t.gap(0.75)),
+                        ...topics.expand((topic) {
+                          final qs = topic.questions;
+                          return [
+                            Padding(
+                              padding: EdgeInsets.only(bottom: t.gap(0.5)),
+                              child: MathText(
+                                topic.title,
+                                style: const TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                            if (qs.isEmpty)
+                              Padding(
+                                padding: EdgeInsets.only(bottom: t.gap(1)),
+                                child: MathText(
+                                  'What is ${topic.title}?',
+                                  style: TextStyle(color: t.textSecondary, height: 1.4),
+                                ),
+                              )
+                            else
+                              ...qs.map(
+                                (q) => Padding(
+                                  padding: EdgeInsets.only(bottom: t.gap(1)),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      MathText(
+                                        q.prompt,
+                                        style: const TextStyle(height: 1.35),
+                                      ),
+                                      if ((q.answer ?? '').trim().isNotEmpty) ...[
+                                        SizedBox(height: t.gap(0.35)),
+                                        MathText(
+                                          q.answer!,
+                                          style: TextStyle(
+                                            color: t.textSecondary,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ];
+                        }),
+                      ],
                     ],
                   ),
                 ),

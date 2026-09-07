@@ -157,26 +157,19 @@ class LectureLabService {
     return [
       RecallQuestion(
         id: 'q1',
-        prompt: 'In your own words: what idea is "$base" capturing, and when would you use it?',
+        prompt: 'What is $base?',
         answer: unsupported
             ? null
-            : 'See source: “${excerpt.length > 120 ? '${excerpt.substring(0, 120)}…' : excerpt}”',
+            : (excerpt.length > 140 ? '${excerpt.substring(0, 140).trim()}…' : excerpt),
         sourceExcerpt: excerpt,
         unsupported: unsupported,
       ),
       RecallQuestion(
         id: 'q2',
-        prompt: 'Give a situation where "$base" applies. What would change if one part of it changed?',
-        answer: null,
+        prompt: 'Define: $base',
+        answer: unsupported ? null : 'The notes define $base in that lecture passage.',
         sourceExcerpt: excerpt,
         unsupported: unsupported,
-      ),
-      RecallQuestion(
-        id: 'q3',
-        prompt: 'Which nearby idea is easy to mix up with "$base", and how do you tell them apart in meaning?',
-        answer: null,
-        sourceExcerpt: excerpt,
-        unsupported: true,
       ),
     ];
   }

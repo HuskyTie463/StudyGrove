@@ -86,9 +86,9 @@ class StudyAiClient {
         'Extract the full lecture text from this file ($filename). '
         'Keep headings and slide order. Do not summarise. '
         'If a page is a diagram, briefly describe it in square brackets. '
-        'Write every formula in LaTeX with \$...\$ and stacked fractions '
-        r'as \frac{numerator}{denominator}, never slash form like a/b. '
-        'Name what each symbol means in words.';
+        'Write every formula in LaTeX with \$...\$ or \$\$...\$\$ and stacked '
+        r'fractions as \frac{numerator}{denominator}, never slash form like a/b, '
+        'never Unicode fake math, and never plain x^2 when a formula is needed.';
     if (studyAiSettings.provider == StudyAiProvider.openai) {
       throw StudyAiException(
         'PDF and image files work with Anthropic. Switch provider in Settings, or paste the text.',
@@ -127,9 +127,11 @@ class StudyAiClient {
         : 'Align every topic to one of these learning objectives. Drop material that does not serve them:\n${objectives.map((o) => '- $o').join('\n')}';
     final jsonShape = '''
 Return JSON of the form:
-{"topics":[{"title":"concept name in words","objective":"matching objective or null","questions":[{"prompt":"conceptual question in words","answer":"explanation in words, with LaTeX formulas if needed","sourceExcerpt":"short quote from notes"}]}]}
-Give 4–10 topics. Titles are ideas ("Conservation of energy in a closed system"), not symbols.
-Each topic 2–3 questions that test meaning, use, and contrast — not "what is x".
+{"topics":[{"title":"short term or concept","objective":"matching objective or null","questions":[{"prompt":"What is X? / Define … / Solve: …","answer":"one term, number, formula, or short sentence","sourceExcerpt":"short quote from notes"}]}]}
+Give 4–10 topics. Titles are short terms ("Kinetic energy", "Product rule"), not essays.
+Each topic 2–4 Quizlet-style items: term → definition, one fact, one formula, or one vocab item.
+Prompts stay under ~12 words. Answers stay under ~25 words plus any LaTeX.
+$quizletRevisionInstructions
 ''';
     final pdf = pdfBytes;
     final hasPdf = pdf != null && pdf.isNotEmpty;
@@ -138,13 +140,13 @@ Each topic 2–3 questions that test meaning, use, and contrast — not "what is
       throw StudyAiException('Add notes or a PDF to extract.');
     }
     final system = hasPdf
-        ? 'You extract study concepts from the attached lecture PDF'
+        ? 'You extract Quizlet-style recall cards from the attached lecture PDF'
             '${hasNotes ? ' and any pasted notes' : ''}. Use only that material. '
             'If something is not in the source, omit it. Return JSON only. '
-            '$mathAndConceptInstructions'
-        : 'You extract study concepts from lecture notes. Use only the notes. '
+            '$quizletRevisionInstructions'
+        : 'You extract Quizlet-style recall cards from lecture notes. Use only the notes. '
             'If something is not in the notes, omit it. Return JSON only. '
-            '$mathAndConceptInstructions';
+            '$quizletRevisionInstructions';
 
     late final String raw;
     if (pdf != null &&
@@ -228,9 +230,11 @@ $jsonShape
         qs.add(
           RecallQuestion(
             id: 'ai$q',
-            prompt: (qm['prompt'] as String?) ?? '',
-            answer: qm['answer'] as String?,
-            sourceExcerpt: qm['sourceExcerpt'] as String?,
+            prompt: MathFormat.normalizeRevisionText(
+              (qm['prompt'] as String?) ?? '',
+            ),
+            answer: _optionalNormalized(qm['answer']),
+            sourceExcerpt: _optionalNormalized(qm['sourceExcerpt']),
             unsupported: (qm['sourceExcerpt'] as String?) == null,
           ),
         );
@@ -253,6 +257,7 @@ $jsonShape
     required List<ReviewTopic> topics,
     required List<LectureNote> lectures,
     bool interleaved = false,
+    bool examStyle = false,
   }) async {
     final notes = lectures.take(4).map((l) {
       final body = l.body.length > 3500 ? '${l.body.substring(0, 3500)}…' : l.body;
@@ -262,12 +267,16 @@ $jsonShape
       final obj = t.learningObjective == null ? '' : ' (objective: ${t.learningObjective})';
       return '- ${t.title}$obj';
     }).join('\n');
+    final mix = examStyle
+        ? 'This is a short test. Prefer definition, term recall, simple MCQ, true/false, and short numeric. No essays.'
+        : 'This is a quiz. Mix definition, term recall, simple MCQ, true/false, and short numeric.';
     final raw = await complete(
       system:
-          'You write graded retrieval quizzes from the student\'s notes only. '
-          'Do not invent facts. JSON only. $mathAndConceptInstructions',
+          'You write Quizlet-style graded quizzes from the student\'s notes only. '
+          'Do not invent facts. JSON only. $quizletRevisionInstructions',
       user: '''
 ${interleaved ? 'Interleave items across concepts.' : 'Group related items, still mix formats.'}
+$mix
 
 Concepts:
 $concepts
@@ -276,10 +285,9 @@ Notes:
 $notes
 
 Return JSON:
-{"items":[{"prompt":"...","kind":"mcq"|"tf"|"short","options":["full concept statement","..."],"correctIndex":0,"expectedKeywords":["..."],"explanation":"why, in words, quoting the notes","topicTitle":"...","sourceExcerpt":"...","objective":null}]}
-8–12 items. Ask what the idea means, when to use it, or what would change if a condition changed.
-Do not ask "what is x". MCQ options are full statements, not A/B/C letters or bare formulas.
-For tf, options must be ["True","False"]. For short, options can be [].
+{"items":[{"prompt":"short stem","kind":"mcq"|"tf"|"short","options":["short option","..."],"correctIndex":0,"expectedKeywords":["key word or number"],"explanation":"one short sentence","topicTitle":"...","sourceExcerpt":"...","objective":null}]}
+8–12 items. One fact per item. Stems under ~20 words. Options under ~12 words.
+MCQ: 3–4 concise choices, not paragraphs. For tf, options must be ["True","False"]. For short, options can be [] and expectedKeywords must include the accepted number/term.
 ''',
     );
     final map = _asJsonMap(raw);
@@ -300,17 +308,21 @@ For tf, options must be ["True","False"]. For short, options can be [].
       items.add(
         QuizItem(
           id: 'ai-$i',
-          prompt: (m['prompt'] as String?) ?? '',
+          prompt: MathFormat.normalizeRevisionText((m['prompt'] as String?) ?? ''),
           kind: kind,
-          options: options,
+          options: options
+              .map(MathFormat.normalizeRevisionText)
+              .toList(),
           correctIndex: (m['correctIndex'] as num?)?.toInt(),
           expectedKeywords: ((m['expectedKeywords'] as List?) ?? const [])
               .map((e) => e.toString())
               .toList(),
-          explanation: (m['explanation'] as String?) ?? '',
+          explanation: MathFormat.normalizeRevisionText(
+            (m['explanation'] as String?) ?? '',
+          ),
           topicTitle: (m['topicTitle'] as String?) ?? '',
-          sourceExcerpt: m['sourceExcerpt'] as String?,
-          objective: m['objective'] as String?,
+          sourceExcerpt: _optionalNormalized(m['sourceExcerpt']),
+          objective: _optionalNormalized(m['objective']),
         ),
       );
     }
@@ -318,6 +330,73 @@ For tf, options must be ["True","False"]. For short, options can be [].
       throw StudyAiException('The model returned no quiz items.');
     }
     return items;
+  }
+
+  Future<List<FlashCard>> generateFlashcards({
+    required List<ReviewTopic> topics,
+    required List<LectureNote> lectures,
+  }) async {
+    final notes = lectures.take(4).map((l) {
+      final body = l.body.length > 3500 ? '${l.body.substring(0, 3500)}…' : l.body;
+      return '## ${l.title}\n$body';
+    }).join('\n\n');
+    final concepts = topics.take(16).map((t) {
+      final obj =
+          t.learningObjective == null ? '' : ' (objective: ${t.learningObjective})';
+      final qs = t.questions
+          .take(2)
+          .map((q) => q.prompt.trim())
+          .where((p) => p.isNotEmpty)
+          .join(' | ');
+      return '- ${t.title}$obj${qs.isEmpty ? '' : ' — $qs'}';
+    }).join('\n');
+    final raw = await complete(
+      system:
+          'You write Quizlet-style flashcards from the student\'s notes only. '
+          'Do not invent facts. JSON only. $quizletRevisionInstructions',
+      user: '''
+Concepts:
+$concepts
+
+Notes:
+$notes
+
+Return JSON:
+{"cards":[{"front":"short prompt","back":"short answer","topicTitle":"matching concept","excerpt":"optional short quote"}]}
+10–16 cards. One idea per card.
+Front examples: a word, "What is mitochondria?", "Define oxidation", "Solve: \$2x+3=11\$".
+Back examples: a definition in one sentence, a number, or a formula such as \$KE = \\frac{1}{2}mv^{2}\$.
+Never write a paragraph on either side.
+''',
+    );
+    final map = _asJsonMap(raw);
+    final list = (map['cards'] as List?) ?? const [];
+    final cards = <FlashCard>[];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] is! Map) continue;
+      final m = Map<String, dynamic>.from(list[i] as Map);
+      final front = MathFormat.normalizeRevisionText(
+        (m['front'] as String?)?.trim() ?? '',
+      );
+      final back = MathFormat.normalizeRevisionText(
+        (m['back'] as String?)?.trim() ?? '',
+      );
+      if (front.isEmpty || back.isEmpty) continue;
+      final title = (m['topicTitle'] as String?)?.trim() ?? '';
+      cards.add(
+        FlashCard(
+          topicId: _topicIdFor(title, topics),
+          front: front,
+          back: back,
+          excerpt: _optionalNormalized(m['excerpt']),
+          objective: _optionalNormalized(m['objective']),
+        ),
+      );
+    }
+    if (cards.isEmpty) {
+      throw StudyAiException('The model returned no flashcards.');
+    }
+    return cards;
   }
 
   Future<String> generateListenScript({
@@ -623,6 +702,27 @@ doNotMap must name at least one tempting false mapping.
     }
     if (status == 429) return 'Rate limited. Try again in a moment.';
     return 'Provider error ($status).';
+  }
+
+  String? _optionalNormalized(dynamic raw) {
+    if (raw is! String) return null;
+    final t = raw.trim();
+    if (t.isEmpty) return null;
+    return MathFormat.normalizeRevisionText(t);
+  }
+
+  String _topicIdFor(String title, List<ReviewTopic> topics) {
+    if (topics.isEmpty) return '';
+    final needle = title.toLowerCase().trim();
+    if (needle.isEmpty) return topics.first.id;
+    for (final t in topics) {
+      if (t.title.toLowerCase() == needle) return t.id;
+    }
+    for (final t in topics) {
+      final name = t.title.toLowerCase();
+      if (name.contains(needle) || needle.contains(name)) return t.id;
+    }
+    return topics.first.id;
   }
 
   List<String> _stringList(dynamic raw) {

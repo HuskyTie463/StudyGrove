@@ -238,8 +238,8 @@ class ConsolidationEngine {
           QuizItem(
             id: '${topic.id}-mcq',
             prompt: excerpt != null && excerpt.length > 24
-                ? 'Which idea is this lecture passage pointing at?\n\n“${_clip(excerpt, 160)}”'
-                : 'Which idea belongs with this subject, and what does it actually mean?',
+                ? 'Which term matches this note?\n“${_clip(excerpt, 90)}”'
+                : 'What is the term for this idea?',
             kind: QuizKind.multipleChoice,
             options: options,
             correctIndex: options.indexOf(topic.title),
@@ -255,8 +255,8 @@ class ConsolidationEngine {
       if (i % 3 == 1 && excerpt != null) {
         final truth = i.isEven;
         final prompt = truth
-            ? 'True or false: ${topic.title} is a real idea from these lectures, and it is used when the notes describe that situation.'
-            : 'True or false: ${topic.title} is unrelated to this subject and can be ignored for these lectures.';
+            ? 'True or false: ${topic.title} appears in these notes.'
+            : 'True or false: ${topic.title} is unrelated to these notes.';
         items.add(
           QuizItem(
             id: '${topic.id}-tf',
@@ -277,8 +277,7 @@ class ConsolidationEngine {
       items.add(
         QuizItem(
           id: '${topic.id}-sa',
-          prompt: q?.prompt ??
-              'In your own words, what does ${topic.title} mean, and when would you use it?',
+          prompt: _shortPrompt(q?.prompt, topic.title),
           kind: QuizKind.shortRecall,
           expectedKeywords: _keywords(topic.title, excerpt),
           explanation: _explain(topic, excerpt ?? q?.sourceExcerpt, objective),
@@ -292,46 +291,81 @@ class ConsolidationEngine {
   }
 
   bool gradeShort(QuizItem item, String answer) {
-    final text = answer.toLowerCase();
-    if (text.trim().length < 8) return false;
+    final text = answer.toLowerCase().trim();
+    if (text.isEmpty) return false;
+    if (item.expectedKeywords.isEmpty) return true;
     var hits = 0;
     for (final k in item.expectedKeywords) {
-      if (k.length >= 4 && text.contains(k.toLowerCase())) hits++;
+      final key = k.trim().toLowerCase();
+      if (key.isEmpty) continue;
+      if (text.contains(key)) hits++;
     }
+    if (hits == 0) return false;
     return hits >= (item.expectedKeywords.length <= 2 ? 1 : 2);
   }
 
   List<FlashCard> buildFlashcards(List<ReviewTopic> topics) {
-    return topics.map((t) {
+    final cards = <FlashCard>[];
+    for (final t in topics) {
       final excerpt = t.questions
           .map((q) => q.sourceExcerpt)
           .whereType<String>()
           .where((s) => s.trim().isNotEmpty)
           .firstOrNull;
-      final storedQ = t.questions
-          .map((q) => q.prompt)
-          .where((p) => p.trim().length > 8)
-          .firstOrNull;
-      final storedA = t.questions
-              .map((q) => q.answer)
-              .whereType<String>()
-              .where((s) => s.trim().isNotEmpty)
-              .firstOrNull ??
-          excerpt ??
-          'Say what ${t.title} means in a sentence, then when you would reach for it.';
-      final front = storedQ ??
-          'What does this idea mean, and when do you use it?\n\n${t.title}';
-      final back = storedA.contains(t.title)
-          ? storedA
-          : '${t.title}\n\n$storedA';
-      return FlashCard(
-        topicId: t.id,
-        front: front,
-        back: back,
-        excerpt: excerpt,
-        objective: t.learningObjective,
-      );
-    }).toList();
+      if (t.questions.isEmpty) {
+        cards.add(
+          FlashCard(
+            topicId: t.id,
+            front: 'What is ${t.title}?',
+            back: t.learningObjective?.trim().isNotEmpty == true
+                ? t.learningObjective!
+                : 'Recall the definition of ${t.title} from your notes.',
+            excerpt: excerpt,
+            objective: t.learningObjective,
+          ),
+        );
+        continue;
+      }
+      for (final q in t.questions) {
+        final front = _shortPrompt(q.prompt, t.title);
+        final back = _shortAnswer(q.answer, excerpt, t.title);
+        cards.add(
+          FlashCard(
+            topicId: t.id,
+            front: front,
+            back: back,
+            excerpt: q.sourceExcerpt ?? excerpt,
+            objective: t.learningObjective,
+          ),
+        );
+      }
+    }
+    return cards;
+  }
+
+  String _shortPrompt(String? prompt, String title) {
+    final p = (prompt ?? '').trim();
+    if (p.isEmpty) return 'What is $title?';
+    final lower = p.toLowerCase();
+    final essay = p.length > 140 ||
+        lower.contains('in your own words') ||
+        lower.contains('when would you use') ||
+        lower.contains('explain in detail') ||
+        lower.contains('what would change if');
+    if (essay) return 'What is $title?';
+    return p;
+  }
+
+  String _shortAnswer(String? answer, String? excerpt, String title) {
+    final a = (answer ?? '').trim();
+    if (a.isNotEmpty) {
+      if (a.length > 220) return _clip(a, 180);
+      return a;
+    }
+    if (excerpt != null && excerpt.trim().isNotEmpty) {
+      return _clip(excerpt, 160);
+    }
+    return title;
   }
 
   List<String> elaborativePrompts(List<ReviewTopic> topics) {
@@ -592,18 +626,13 @@ class ConsolidationEngine {
   }
 
   String _explain(ReviewTopic topic, String? excerpt, String? objective) {
-    final bits = <String>[];
-    if (objective != null) {
-      bits.add('This maps to the learning objective: $objective.');
-    }
     if (excerpt != null && excerpt.trim().isNotEmpty) {
-      bits.add('From your notes: “${_clip(excerpt, 220)}”');
-    } else {
-      bits.add(
-        'Re-read the lecture passage on ${topic.title}. The answer should come from that source, not from memory of a summary.',
-      );
+      return _clip(excerpt, 160);
     }
-    return bits.join(' ');
+    if (objective != null && objective.trim().isNotEmpty) {
+      return objective.trim();
+    }
+    return topic.title;
   }
 
   String _clip(String s, int n) {

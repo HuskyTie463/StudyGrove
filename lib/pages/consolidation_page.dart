@@ -531,6 +531,7 @@ class _SessionHost extends StatelessWidget {
       case _Tool.flashcards:
         return _FlashSession(
           topics: topics,
+          lectures: lectures,
           service: service,
           progressService: progressService,
         );
@@ -607,6 +608,7 @@ class _QuizSessionState extends State<_QuizSession> {
           topics: widget.topics,
           lectures: widget.lectures,
           interleaved: widget.interleaved || widget.pretest,
+          examStyle: widget.pretest,
         );
         if (!mounted) return;
         setState(() {
@@ -702,9 +704,10 @@ class _QuizSessionState extends State<_QuizSession> {
           TextField(
             controller: _shortCtrl,
             enabled: !_answered,
-            maxLines: 4,
+            maxLines: 2,
             decoration: const InputDecoration(
-              labelText: 'Your answer',
+              labelText: 'Short answer',
+              hintText: 'Term, number, or one sentence',
               alignLabelWithHint: true,
             ),
           )
@@ -775,11 +778,13 @@ class _QuizSessionState extends State<_QuizSession> {
 class _FlashSession extends StatefulWidget {
   const _FlashSession({
     required this.topics,
+    required this.lectures,
     required this.service,
     this.progressService,
   });
 
   final List<ReviewTopic> topics;
+  final List<LectureNote> lectures;
   final LectureLabService service;
   final ProgressMetricsService? progressService;
 
@@ -790,7 +795,9 @@ class _FlashSession extends StatefulWidget {
 class _FlashSessionState extends State<_FlashSession>
     with SingleTickerProviderStateMixin {
   static const _engine = ConsolidationEngine();
-  late final List<FlashCard> _cards;
+  List<FlashCard> _cards = const [];
+  var _loading = true;
+  String? _loadNote;
   late final AnimationController _flip;
   late final FocusNode _focus;
   var _index = 0;
@@ -801,12 +808,42 @@ class _FlashSessionState extends State<_FlashSession>
   @override
   void initState() {
     super.initState();
-    _cards = _engine.buildFlashcards(widget.topics)..shuffle();
     _flip = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 420),
     );
     _focus = FocusNode();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (studyAiSettings.hasKey &&
+        (widget.topics.isNotEmpty || widget.lectures.isNotEmpty)) {
+      try {
+        final cards = await StudyAiClient.instance.generateFlashcards(
+          topics: widget.topics,
+          lectures: widget.lectures,
+        );
+        if (!mounted) return;
+        setState(() {
+          _cards = [...cards]..shuffle();
+          _loading = false;
+          _loadNote = 'Generated with Study AI.';
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _focus.requestFocus();
+        });
+        return;
+      } catch (e) {
+        _loadNote = 'AI cards failed ($e). Using saved items.';
+      }
+    }
+    final cards = _engine.buildFlashcards(widget.topics)..shuffle();
+    if (!mounted) return;
+    setState(() {
+      _cards = cards;
+      _loading = false;
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focus.requestFocus();
     });
@@ -835,7 +872,10 @@ class _FlashSessionState extends State<_FlashSession>
       return;
     }
     _busy = true;
-    await widget.service.recordReview(_cards[_index].topicId, confidence);
+    final topicId = _cards[_index].topicId;
+    if (topicId.isNotEmpty) {
+      await widget.service.recordReview(topicId, confidence);
+    }
     await widget.progressService?.increment(
       recalls: 1,
       strengthened: confidence >= 0.7 ? 1 : 0,
@@ -870,6 +910,9 @@ class _FlashSessionState extends State<_FlashSession>
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
+    if (_loading) {
+      return const _LoadingPane();
+    }
     if (_cards.isEmpty) {
       return _empty(t, 'No concepts yet. Extract topics in Lecture Lab.');
     }
@@ -896,6 +939,10 @@ class _FlashSessionState extends State<_FlashSession>
                 'Tap the card or press ↑ to flip.  ← don’t know   → know',
                 style: TextStyle(color: t.textMuted, fontSize: 13),
               ),
+              if (_loadNote != null) ...[
+                SizedBox(height: t.gap(0.5)),
+                Text(_loadNote!, style: TextStyle(color: t.textMuted, fontSize: 12)),
+              ],
               SizedBox(height: t.gap(1.5)),
               Expanded(
                 child: AnimatedBuilder(

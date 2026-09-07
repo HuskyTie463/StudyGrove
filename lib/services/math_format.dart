@@ -42,8 +42,9 @@ class MathFormat {
   /// Inserts `$...$` around converted fractions so [MathText] can render them.
   static String forDisplay(String raw) {
     if (raw.trim().isEmpty) return raw;
+    final cleaned = normalizeRevisionText(raw);
     final buf = StringBuffer();
-    for (final span in scan(raw)) {
+    for (final span in scan(cleaned)) {
       if (span.isMath) {
         buf.write(span.raw);
       } else {
@@ -51,6 +52,40 @@ class MathFormat {
       }
     }
     return buf.toString();
+  }
+
+  /// Strips markdown chrome, unifies math delimiters, and tidies model junk
+  /// so [scan] sees `$...$` / `$$...$$` instead of raw `\(` or `**bold**`.
+  static String normalizeRevisionText(String raw) {
+    var s = raw.replaceAll('\r\n', '\n');
+    if (s.trim().isEmpty) return raw;
+
+    s = s.replaceAll('&nbsp;', ' ');
+    s = s.replaceAll('&amp;', '&');
+    s = s.replaceAll('&lt;', '<');
+    s = s.replaceAll('&gt;', '>');
+
+    // JSON / markdown leftovers: `\\frac` → `\frac`, `\\(` → `\(`
+    s = s.replaceAll(r'\\(', r'\(');
+    s = s.replaceAll(r'\\)', r'\)');
+    s = s.replaceAll(r'\\[', r'\[');
+    s = s.replaceAll(r'\\]', r'\]');
+    s = s.replaceAllMapped(RegExp(r'\\\\([a-zA-Z]+)'), (m) => '\\${m[1]}');
+
+    s = s.replaceAllMapped(
+      RegExp(r'\\\((.+?)\\\)', dotAll: true),
+      (m) => '\$${m[1]!.trim()}\$',
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'\\\[(.+?)\\\]', dotAll: true),
+      (m) => '\$\$${m[1]!.trim()}\$\$',
+    );
+
+    s = _mapOutsideMath(s, _stripMarkdown);
+    s = _mapOutsideMath(s, _unicodeMathHints);
+    s = s.replaceAll('**', '');
+    s = s.replaceAll('__', '');
+    return s;
   }
 
   /// Converts slash fractions that are already inside a TeX body.
@@ -223,6 +258,108 @@ class MathFormat {
     return out;
   }
 
+  static String _mapOutsideMath(String raw, String Function(String prose) fn) {
+    final buf = StringBuffer();
+    for (final span in scan(raw)) {
+      if (span.isMath) {
+        buf.write(span.raw);
+      } else {
+        buf.write(fn(span.prose));
+      }
+    }
+    return buf.toString();
+  }
+
+  static String _stripMarkdown(String prose) {
+    var s = prose;
+    s = s.replaceAllMapped(RegExp(r'\*\*([^*]+)\*\*'), (m) => m[1]!);
+    s = s.replaceAllMapped(RegExp(r'__([^_]+)__'), (m) => m[1]!);
+    s = s.replaceAllMapped(RegExp(r'~~([^~]+)~~'), (m) => m[1]!);
+    s = s.replaceAllMapped(RegExp(r'`([^`]+)`'), (m) => m[1]!);
+    s = s.replaceAllMapped(RegExp(r'\[([^\]]+)\]\([^)]+\)'), (m) => m[1]!);
+    s = s.replaceAllMapped(RegExp(r'^#{1,6}\s+', multiLine: true), (_) => '');
+    return s;
+  }
+
+  static const _superMap = {
+    '¹': '1',
+    '²': '2',
+    '³': '3',
+    '⁴': '4',
+    '⁵': '5',
+    '⁶': '6',
+    '⁷': '7',
+    '⁸': '8',
+    '⁹': '9',
+    '⁰': '0',
+  };
+
+  static const _subMap = {
+    '₀': '0',
+    '₁': '1',
+    '₂': '2',
+    '₃': '3',
+    '₄': '4',
+    '₅': '5',
+    '₆': '6',
+    '₇': '7',
+    '₈': '8',
+    '₉': '9',
+  };
+
+  static const _greekMap = {
+    'α': r'\alpha',
+    'β': r'\beta',
+    'γ': r'\gamma',
+    'δ': r'\delta',
+    'Δ': r'\Delta',
+    'θ': r'\theta',
+    'λ': r'\lambda',
+    'μ': r'\mu',
+    'π': r'\pi',
+    'σ': r'\sigma',
+    'ω': r'\omega',
+    'Σ': r'\Sigma',
+    'Ω': r'\Omega',
+  };
+
+  /// Turns common Unicode fake-math in prose into `$...$` so it can render.
+  static String _unicodeMathHints(String prose) {
+    var s = prose;
+    s = s.replaceAllMapped(RegExp(r'([A-Za-z0-9πθαλΔ\)\]])([²³¹⁰⁴⁵⁶⁷⁸⁹]+)'), (
+      m,
+    ) {
+      final exp = m[2]!.split('').map((c) => _superMap[c] ?? c).join();
+      return '\$${m[1]}^{$exp}\$';
+    });
+    s = s.replaceAllMapped(RegExp(r'([A-Za-z])([₀-₉]+)'), (m) {
+      final sub = m[2]!.split('').map((c) => _subMap[c] ?? c).join();
+      return '\$${m[1]}_{$sub}\$';
+    });
+    s = s.replaceAllMapped(RegExp(r'√\s*\(([^()\n]{1,48})\)'), (m) {
+      return '\$\\sqrt{${m[1]!.trim()}}\$';
+    });
+    s = s.replaceAllMapped(RegExp(r'√\s*([A-Za-z0-9]+)'), (m) {
+      return '\$\\sqrt{${m[1]}}\$';
+    });
+    s = s.replaceAll('½', r'$\frac{1}{2}$');
+    s = s.replaceAll('¼', r'$\frac{1}{4}$');
+    s = s.replaceAll('¾', r'$\frac{3}{4}$');
+    s = s.replaceAll('×', r'$\times$');
+    s = s.replaceAll('÷', r'$\div$');
+    s = s.replaceAll('±', r'$\pm$');
+    s = s.replaceAll('≠', r'$\neq$');
+    s = s.replaceAll('≤', r'$\le$');
+    s = s.replaceAll('≥', r'$\ge$');
+    s = s.replaceAll('≈', r'$\approx$');
+    s = s.replaceAll('∞', r'$\infty$');
+    s = s.replaceAllMapped(
+      RegExp(r'(?<![A-Za-z\\$])([αβγδΔθλμπσωΣΩ])(?![A-Za-z])'),
+      (m) => '\$${_greekMap[m[1]!]}\$',
+    );
+    return s;
+  }
+
   static String _decorateProse(String prose) {
     var s = prose.replaceAllMapped(_slashFrac, (m) {
       final a = m[1]!;
@@ -306,10 +443,25 @@ class MathSpan {
   bool get isMath => tex != null;
 }
 
+const latexMathInstructions = r'''
+Any formula must be real LaTeX inside $...$ (inline) or $$...$$ (block).
+Never Unicode fake math (x², ½, π as a symbol) and never plain x^2 / a/b when a formula is needed.
+Fractions must be stacked as $\frac{numerator}{denominator}$.
+Do not wrap formulas in markdown (**bold**, `code`). Do not use \(...\) or \[...\] — use $...$ / $$...$$.
+''';
+
 const mathAndConceptInstructions = '''
 Write conceptually in words first: what the idea means, why it matters, and when you would use it.
 Never leave a topic as bare letters or a lone formula (not "F=ma", not "a/b", not "x").
-Any formula uses LaTeX inside \$...\$ (inline) or \$\$...\$\$ (block).
-Fractions must be stacked as \$\\frac{numerator}{denominator}\$ — never slash form like a/b.
+$latexMathInstructions
 Name each symbol in words beside the formula.
+''';
+
+const quizletRevisionInstructions = '''
+Write Quizlet-style retrieval items: short, specific, one fact each.
+Prompt/front: a term, "What is X?", "Define …", "Solve: …", true/false stem, or a one-line MCQ. Not an essay.
+Answer/back: one term, one number, one formula, or one short sentence. No multi-paragraph explanations.
+Do not ask the student to "explain in detail", "discuss", or "in your own words at length" unless they asked for essays.
+Match the difficulty of the lecture/notes. Do not invent harder theory.
+$latexMathInstructions
 ''';
