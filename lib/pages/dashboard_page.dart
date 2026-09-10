@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/dashboard_layout.dart';
 import '../models/models.dart';
+import '../services/android_home_widget.dart';
 import '../services/dashboard_layout_service.dart';
 import '../ui/math_text.dart';
 import '../ui/shared_ui.dart';
@@ -122,18 +123,32 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _openAddPicker({required bool phone}) async {
     final missing =
         phone ? _layout.missingForPhone() : _layout.missingForDesktop();
-    final picked = await showModalBottomSheet<DashboardWidgetType>(
+    final picked = await showModalBottomSheet<_AddWidgetResult>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       useSafeArea: true,
-      builder: (ctx) => _AddWidgetSheet(available: missing),
+      builder: (ctx) => _AddWidgetSheet(
+        available: missing,
+        includeHomeScreen: phone && AndroidHomeWidget.isSupported,
+      ),
     );
     if (picked == null || !mounted) return;
+    if (picked.homeScreen) {
+      final status = await AndroidHomeWidget.requestPin();
+      if (!mounted) return;
+      final message = status == 'pinned'
+          ? 'Follow the prompt to add Study Grove to your home screen.'
+          : 'Long-press your home screen, tap Widgets, and choose Study Grove.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+    final type = picked.type;
+    if (type == null) return;
     if (phone) {
-      _addPhone(picked);
+      _addPhone(type);
     } else {
-      _addDesktop(picked);
+      _addDesktop(type);
     }
   }
 
@@ -712,14 +727,27 @@ class _GridPainter extends CustomPainter {
   }
 }
 
+class _AddWidgetResult {
+  const _AddWidgetResult.widget(this.type) : homeScreen = false;
+  const _AddWidgetResult.homeScreen() : type = null, homeScreen = true;
+
+  final DashboardWidgetType? type;
+  final bool homeScreen;
+}
+
 class _AddWidgetSheet extends StatelessWidget {
-  const _AddWidgetSheet({required this.available});
+  const _AddWidgetSheet({
+    required this.available,
+    this.includeHomeScreen = false,
+  });
 
   final List<DashboardWidgetType> available;
+  final bool includeHomeScreen;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final emptyDash = available.isEmpty && !includeHomeScreen;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
@@ -737,13 +765,31 @@ class _AddWidgetSheet extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              available.isEmpty
+              emptyDash
                   ? 'All widgets are already on the dashboard. Remove one first.'
                   : 'Scroll and tap a widget to add it.',
               style: TextStyle(
                 color: scheme.onSurface.withValues(alpha: 0.84),
               ),
             ),
+            if (includeHomeScreen) ...[
+              const SizedBox(height: 12),
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.widgets_outlined, color: scheme.primary),
+                title: const Text('Home screen'),
+                subtitle: const Text(
+                  '2×2 Study Grove shortcut on your Android launcher',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () => Navigator.pop(
+                  context,
+                  const _AddWidgetResult.homeScreen(),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             if (available.isEmpty)
               const SizedBox(height: 8)
@@ -767,7 +813,10 @@ class _AddWidgetSheet extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      onTap: () => Navigator.pop(context, type),
+                      onTap: () => Navigator.pop(
+                        context,
+                        _AddWidgetResult.widget(type),
+                      ),
                     );
                   },
                 ),
@@ -783,7 +832,10 @@ class _AddWidgetSheet extends StatelessWidget {
                     final type = available[index];
                     return _WidgetPreviewCard(
                       type: type,
-                      onTap: () => Navigator.pop(context, type),
+                      onTap: () => Navigator.pop(
+                        context,
+                        _AddWidgetResult.widget(type),
+                      ),
                     );
                   },
                 ),

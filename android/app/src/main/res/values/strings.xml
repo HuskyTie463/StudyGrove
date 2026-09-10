@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Study Grove</string>
+    <string name="home_widget_description">Open Study Grove from your home screen</string>
+    <string name="home_widget_subtitle">Today\'s study</string>
+    <string name="home_widget_tap">Tap to open</string>
+</resources>
