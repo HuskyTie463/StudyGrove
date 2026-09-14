@@ -1,16 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../services/ai_allowance_service.dart';
 import '../services/consolidation_engine.dart';
 import '../services/friction_and_progress.dart';
 import '../services/lecture_lab_service.dart';
 import '../services/neural_tts.dart';
 import '../services/realtime_tutor.dart';
+import '../services/study_ai_exceptions.dart';
+import '../services/subscription_catalog.dart';
 import '../services/tts_voice_settings.dart';
 import '../theme/design_tokens.dart';
 import '../ui/math_text.dart';
 import '../ui/sg_primitives.dart';
 import '../ui/voice_orb.dart';
+import 'paywall_sheet.dart';
 
 class VoiceChatPage extends StatefulWidget {
   const VoiceChatPage({
@@ -60,29 +66,33 @@ class _VoiceChatPageState extends State<VoiceChatPage> {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    return SafeArea(
-      child: StreamBuilder<List<LectureNote>>(
-        stream: widget.lectureLabService.streamLectures(),
-        builder: (context, lectureSnap) {
+    return ColoredBox(
+      color: t.bg,
+      child: SizedBox.expand(
+        child: SafeArea(
+          child: StreamBuilder<List<LectureNote>>(
+            stream: widget.lectureLabService.streamLectures(),
+            builder: (context, lectureSnap) {
           return StreamBuilder<List<ReviewTopic>>(
             stream: widget.lectureLabService.streamTopics(),
             builder: (context, topicSnap) {
-              final lectures = _engine.lecturesForSubject(
-                lectureSnap.data ?? const [],
-                _subject,
-              );
-              final topics = _engine.topicsForSubject(
-                topicSnap.data ?? const [],
-                _subject,
-              );
-              final lecture = lectures
+              // "All lectures" is every stored lecture/concept, even if chrome
+              // has a subject selected.
+              final allLectures = lectureSnap.data ?? const <LectureNote>[];
+              final allTopics = topicSnap.data ?? const <ReviewTopic>[];
+              final lecture = allLectures
                   .where((l) => l.id == _lectureId)
                   .firstOrNull;
               final scopedLectures =
-                  lecture == null ? lectures : <LectureNote>[lecture];
+                  lecture == null ? allLectures : <LectureNote>[lecture];
               final scopedTopics = lecture == null
-                  ? topics
-                  : _engine.topicsForLecture(topics, lecture);
+                  ? allTopics
+                  : _engine.topicsForLecture(allTopics, lecture);
+              final loadError = lectureSnap.hasError
+                  ? lectureSnap.error
+                  : topicSnap.hasError
+                      ? topicSnap.error
+                      : null;
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -102,7 +112,17 @@ class _VoiceChatPageState extends State<VoiceChatPage> {
                             'Add a subject, then capture lectures in Lecture Lab.',
                             style: TextStyle(color: t.textMuted, height: 1.4),
                           ),
-                        if (lectures.isNotEmpty) ...[
+                        if (loadError != null)
+                          Text(
+                            'Could not load lectures: $loadError',
+                            style: TextStyle(color: t.urgent, height: 1.4),
+                          )
+                        else if (allLectures.isEmpty && allTopics.isEmpty)
+                          Text(
+                            'No lectures or concepts yet. Capture one in Lecture Lab.',
+                            style: TextStyle(color: t.textMuted, height: 1.4),
+                          ),
+                        if (allLectures.isNotEmpty || allTopics.isNotEmpty) ...[
                           SizedBox(height: t.gap(1)),
                           Wrap(
                             spacing: 8,
@@ -114,7 +134,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> {
                                 onSelected: (_) =>
                                     setState(() => _lectureId = null),
                               ),
-                              ...lectures.map((l) {
+                              ...allLectures.map((l) {
                                 return FilterChip(
                                   label: Text(
                                     l.title.trim().isEmpty
@@ -134,10 +154,12 @@ class _VoiceChatPageState extends State<VoiceChatPage> {
                   ),
                   Expanded(
                     child: VoiceTutorSession(
-                      key: ValueKey(
-                        '${_subjectId ?? 'none'}-${_lectureId ?? 'all'}',
-                      ),
-                      subjectLabel: _subject?.label ?? 'this subject',
+                      scopeKey: 'all-${_lectureId ?? 'all'}',
+                      subjectLabel: lecture == null
+                          ? 'all lectures'
+                          : (lecture.course?.trim().isNotEmpty == true
+                              ? lecture.course!
+                              : (_subject?.label ?? 'this lecture')),
                       lectures: scopedLectures,
                       topics: scopedTopics,
                       progressService: widget.progressService,
@@ -147,7 +169,9 @@ class _VoiceChatPageState extends State<VoiceChatPage> {
               );
             },
           );
-        },
+            },
+          ),
+        ),
       ),
     );
   }
@@ -156,12 +180,14 @@ class _VoiceChatPageState extends State<VoiceChatPage> {
 class VoiceTutorSession extends StatefulWidget {
   const VoiceTutorSession({
     super.key,
+    required this.scopeKey,
     required this.subjectLabel,
     required this.lectures,
     required this.topics,
     this.progressService,
   });
 
+  final String scopeKey;
   final String subjectLabel;
   final List<LectureNote> lectures;
   final List<ReviewTopic> topics;
@@ -182,6 +208,9 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
   var _tab = 0;
   NeuralVoice _voice = NeuralVoice.sage;
   String? _error;
+  Timer? _allowanceTimer;
+  var _connectBusy = false;
+  var _endedByUser = false;
 
   @override
   void initState() {
@@ -208,6 +237,18 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
     });
   }
 
+  @override
+  void didUpdateWidget(covariant VoiceTutorSession oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scopeKey != widget.scopeKey &&
+        !_endedByUser &&
+        (_live ||
+            _phase == RealtimePhase.connecting ||
+            _phase == RealtimePhase.error)) {
+      _connect();
+    }
+  }
+
   Future<void> _loadVoice() async {
     await ttsVoiceSettings.load();
     if (!mounted) return;
@@ -215,11 +256,15 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
   }
 
   Future<void> _connect() async {
+    if (_connectBusy) return;
+    _connectBusy = true;
+    _endedByUser = false;
     setState(() {
       _error = null;
       _phase = RealtimePhase.connecting;
     });
     try {
+      await aiAllowanceService.ensureCanUse(voice: true);
       await ttsVoiceSettings.load();
       final briefing = const ConsolidationEngine().tutorBriefing(
         subjectLabel: widget.subjectLabel,
@@ -230,14 +275,58 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
         instructions: briefing,
         voice: NeuralVoice.realtimeId(_voice.id),
       );
+      if (_endedByUser || !mounted) return;
+      await aiAllowanceService.consume(voice: true);
+      _watchLongSession();
       widget.progressService?.increment(recalls: 1);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || _endedByUser) return;
       setState(() {
         _error = '$e';
         _phase = RealtimePhase.error;
       });
+      if (e is StudyAiAllowanceException) {
+        showStudyGrovePaywall(context, reason: PaywallReason.allowance);
+      } else if (e is StudyAiProRequiredException) {
+        showStudyGrovePaywall(context);
+      }
+    } finally {
+      _connectBusy = false;
     }
+  }
+
+  Future<void> _endSession() async {
+    _endedByUser = true;
+    _allowanceTimer?.cancel();
+    await _tutor.stop();
+    if (!mounted) return;
+    setState(() {
+      _error = null;
+      _phase = RealtimePhase.stopped;
+    });
+  }
+
+  void _watchLongSession() {
+    _allowanceTimer?.cancel();
+    _allowanceTimer = Timer.periodic(
+      const Duration(minutes: SubscriptionCatalog.voiceExtraUseMinutes),
+      (_) async {
+        if (!_live) return;
+        try {
+          await aiAllowanceService.consume(voice: true);
+        } catch (e) {
+          await _tutor.stop();
+          if (!mounted) return;
+          setState(() {
+            _error = '$e';
+            _phase = RealtimePhase.error;
+          });
+          if (e is StudyAiAllowanceException) {
+            showStudyGrovePaywall(context, reason: PaywallReason.allowance);
+          }
+        }
+      },
+    );
   }
 
   @override
@@ -246,6 +335,7 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
     _tutor.onLine = null;
     _tutor.onError = null;
     _tutor.onLevel = null;
+    _allowanceTimer?.cancel();
     _tutor.stop();
     _level.dispose();
     _ask.dispose();
@@ -280,7 +370,7 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
           ? 'Muted — unmute to talk'
           : 'Listening — ask anything from the notes',
       RealtimePhase.userSpeaking => 'Hearing you…',
-      RealtimePhase.tutorSpeaking => 'Speaking — tap the circle to interrupt',
+      RealtimePhase.tutorSpeaking => 'Speaking…',
       RealtimePhase.error => _error ?? 'Something went wrong',
       RealtimePhase.stopped => 'Session ended',
     };
@@ -289,6 +379,7 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
   Future<void> _onOrbTap() async {
     if (_phase == RealtimePhase.tutorSpeaking) {
       await _tutor.interrupt();
+      if (mounted) setState(() => _phase = RealtimePhase.listening);
       return;
     }
     if (_phase == RealtimePhase.error || _phase == RealtimePhase.stopped) {
@@ -311,6 +402,31 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
       children: [
         Center(
           child: SegmentedButton<int>(
+            showSelectedIcon: false,
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              foregroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return t.textSecondary;
+                }
+                return t.textMuted;
+              }),
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return t.bgMuted;
+                }
+                return Colors.transparent;
+              }),
+              side: WidgetStateProperty.all(
+                BorderSide(color: t.border.withValues(alpha: 0.28)),
+              ),
+              overlayColor: WidgetStateProperty.all(
+                t.textPrimary.withValues(alpha: 0.04),
+              ),
+              textStyle: WidgetStateProperty.all(
+                const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
             segments: const [
               ButtonSegment(value: 0, label: Text('Chat')),
               ButtonSegment(value: 1, label: Text('Options')),
@@ -386,6 +502,19 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
           '${widget.lectures.length} lecture(s) · ${widget.topics.length} concept(s) in ${widget.subjectLabel}',
           textAlign: TextAlign.center,
           style: TextStyle(color: t.textMuted, fontSize: 13),
+        ),
+        SizedBox(height: t.gap(0.5)),
+        AnimatedBuilder(
+          animation: aiAllowanceService,
+          builder: (context, _) {
+            return Text(
+              aiAllowanceService.skipsFor(voice: true)
+                  ? 'Using your own key — Voice Chat does not count toward the monthly allowance.'
+                  : aiAllowanceService.remainingLabel,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: t.textMuted, fontSize: 13),
+            );
+          },
         ),
         SizedBox(height: t.gap(3)),
         Center(
@@ -468,14 +597,9 @@ class _VoiceTutorSessionState extends State<VoiceTutorSession> {
                       onPressed: _connect,
                     )
                   : SgPrimaryButton(
-                      label: 'End',
+                      label: 'Stop',
                       expanded: true,
-                      onPressed: () async {
-                        await _tutor.stop();
-                        if (mounted) {
-                          setState(() => _phase = RealtimePhase.stopped);
-                        }
-                      },
+                      onPressed: _endSession,
                     ),
             ),
           ],

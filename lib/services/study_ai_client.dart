@@ -3,10 +3,14 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
+import 'ai_allowance_service.dart';
 import 'consolidation_engine.dart';
 import 'math_format.dart';
 import 'study_ai_proxy.dart';
+import 'study_ai_session_note.dart';
 import 'study_ai_settings.dart';
+
+export 'study_ai_exceptions.dart';
 
 class StudyAiException implements Exception {
   StudyAiException(this.message);
@@ -27,6 +31,20 @@ class StudyAiExtractedTopic {
   final List<RecallQuestion> questions;
 }
 
+class StudyAiLectureExtract {
+  const StudyAiLectureExtract({
+    this.summary,
+    this.keyIdeas = const [],
+    this.tables = const [],
+    this.topics = const [],
+  });
+
+  final String? summary;
+  final List<LectureKeyIdea> keyIdeas;
+  final List<LectureTable> tables;
+  final List<StudyAiExtractedTopic> topics;
+}
+
 /// Calls the Study Grove AI proxy (or a user-supplied key). Notes stay on
 /// the device except for the request body sent to the model.
 class StudyAiClient {
@@ -42,25 +60,41 @@ class StudyAiClient {
     required String system,
     required String user,
     int maxTokens = 3500,
+    bool countTowardAllowance = true,
   }) async {
     if (!studyAiSettings.ready) await studyAiSettings.load();
     if (!studyAiSettings.hasKey) {
       throw StudyAiException(
-        'Study AI needs the proxy running, or a custom key in Settings.',
+                    'Study AI needs a built-in key in this build, or a custom key in Settings.',
       );
     }
-    return switch (studyAiSettings.provider) {
-      StudyAiProvider.openai => _openai(
-          system: system,
-          user: user,
-          maxTokens: maxTokens,
-        ),
-      StudyAiProvider.anthropic => _anthropic(
-          system: system,
-          user: user,
-          maxTokens: maxTokens,
-        ),
-    };
+    if (countTowardAllowance) {
+      await aiAllowanceService.consume();
+    }
+    Future<String> invoke(StudyAiProvider provider) {
+      return switch (provider) {
+        StudyAiProvider.openai => _openai(
+            system: system,
+            user: user,
+            maxTokens: maxTokens,
+          ),
+        StudyAiProvider.anthropic => _anthropic(
+            system: system,
+            user: user,
+            maxTokens: maxTokens,
+          ),
+      };
+    }
+
+    try {
+      return await invoke(studyAiSettings.provider);
+    } catch (e) {
+      if (!isStudyAiAuthFailure(e)) rethrow;
+      final other = studyAiSettings.provider == StudyAiProvider.openai
+          ? StudyAiProvider.anthropic
+          : StudyAiProvider.openai;
+      return invoke(other);
+    }
   }
 
   /// Reads a PDF or image through the provider. Anthropic accepts native
@@ -73,7 +107,7 @@ class StudyAiClient {
     if (!studyAiSettings.ready) await studyAiSettings.load();
     if (!studyAiSettings.hasKey) {
       throw StudyAiException(
-        'Study AI needs the proxy running, or a custom key in Settings.',
+                    'Study AI needs a built-in key in this build, or a custom key in Settings.',
       );
     }
     if (bytes.length > 18 * 1024 * 1024) {
@@ -81,6 +115,7 @@ class StudyAiClient {
         '$filename is too large to send. Split it or paste the notes.',
       );
     }
+    await aiAllowanceService.consume();
     final b64 = base64Encode(bytes);
     final prompt =
         'Extract the full lecture text from this file ($filename). '
@@ -114,7 +149,7 @@ class StudyAiClient {
     );
   }
 
-  Future<List<StudyAiExtractedTopic>> extractLecture({
+  Future<StudyAiLectureExtract> extractLecture({
     required String title,
     required String body,
     List<String> objectives = const [],
@@ -127,7 +162,13 @@ class StudyAiClient {
         : 'Align every topic to one of these learning objectives. Drop material that does not serve them:\n${objectives.map((o) => '- $o').join('\n')}';
     final jsonShape = '''
 Return JSON of the form:
-{"topics":[{"title":"short term or concept","objective":"matching objective or null","questions":[{"prompt":"What is X? / Define … / Solve: …","answer":"one term, number, formula, or short sentence","sourceExcerpt":"short quote from notes"}]}]}
+{"summary":"3–6 sentence overview of the lecture in plain language",
+ "keyIdeas":[{"title":"short concept name","detail":"2–4 sentences: what it is, why it matters, how it connects"}],
+ "tables":[{"caption":"what the table shows","headers":["col1","col2"],"rows":[["r1c1","r1c2"],["r2c1","r2c2"]]}],
+ "topics":[{"title":"short term or concept","objective":"matching objective or null","questions":[{"prompt":"What is X? / Define … / Solve: …","answer":"one term, number, formula, or short sentence","sourceExcerpt":"short quote from notes"}]}]}
+summary: cover the through-line of the lecture, not a list of titles.
+keyIdeas: 4–10 of the actual ideas/concepts a student should walk away with. Use LaTeX for formulas.
+tables: include comparison tables, property tables, steps, or data tables from the source. If the lecture has none, use [].
 Give 4–10 topics. Titles are short terms ("Kinetic energy", "Product rule"), not essays.
 Each topic 2–4 Quizlet-style items: term → definition, one fact, one formula, or one vocab item.
 Prompts stay under ~12 words. Answers stay under ~25 words plus any LaTeX.
@@ -140,11 +181,13 @@ $quizletRevisionInstructions
       throw StudyAiException('Add notes or a PDF to extract.');
     }
     final system = hasPdf
-        ? 'You extract Quizlet-style recall cards from the attached lecture PDF'
+        ? 'You write a clear lecture summary from the attached lecture PDF'
             '${hasNotes ? ' and any pasted notes' : ''}. Use only that material. '
+            'Lead with a readable overview, then key ideas and any tables. '
             'If something is not in the source, omit it. Return JSON only. '
             '$quizletRevisionInstructions'
-        : 'You extract Quizlet-style recall cards from lecture notes. Use only the notes. '
+        : 'You write a clear lecture summary from lecture notes. Use only the notes. '
+            'Lead with a readable overview, then key ideas and any tables. '
             'If something is not in the notes, omit it. Return JSON only. '
             '$quizletRevisionInstructions';
 
@@ -155,7 +198,7 @@ $quizletRevisionInstructions
       if (!studyAiSettings.ready) await studyAiSettings.load();
       if (!studyAiSettings.hasKey) {
         throw StudyAiException(
-          'Study AI needs the proxy running, or a custom key in Settings.',
+                    'Study AI needs a built-in key in this build, or a custom key in Settings.',
         );
       }
       if (pdf.length > 18 * 1024 * 1024) {
@@ -163,6 +206,7 @@ $quizletRevisionInstructions
           '${pdfFilename ?? 'That PDF'} is too large to send. Split it or paste the notes.',
         );
       }
+      await aiAllowanceService.consume();
       final notesBlock = hasNotes
           ? 'Also consider these pasted notes:\n$clipped\n'
           : 'The lecture is in the attached PDF. Use only that document.\n';
@@ -250,7 +294,33 @@ $jsonShape
     if (out.isEmpty) {
       throw StudyAiException('The model returned no usable topics.');
     }
-    return out;
+    final keyIdeas = <LectureKeyIdea>[];
+    for (final item in (map['keyIdeas'] as List?) ?? const []) {
+      final idea = LectureKeyIdea.tryParse(item);
+      if (idea != null) keyIdeas.add(idea);
+    }
+    if (keyIdeas.isEmpty) {
+      for (final topic in out) {
+        final detail = topic.questions
+            .map((q) => (q.answer ?? '').trim())
+            .where((s) => s.isNotEmpty)
+            .take(2)
+            .join(' ');
+        keyIdeas.add(LectureKeyIdea(title: topic.title, detail: detail));
+      }
+    }
+    final tables = <LectureTable>[];
+    for (final item in (map['tables'] as List?) ?? const []) {
+      final table = LectureTable.tryParse(item);
+      if (table != null) tables.add(table);
+    }
+    final summary = _optionalNormalized(map['summary']);
+    return StudyAiLectureExtract(
+      summary: summary,
+      keyIdeas: keyIdeas,
+      tables: tables,
+      topics: out,
+    );
   }
 
   Future<List<QuizItem>> generateQuiz({
@@ -587,7 +657,7 @@ doNotMap must name at least one tempting false mapping.
       final key = studyAiSettings.apiKey?.trim() ?? '';
       if (key.isEmpty) {
         throw StudyAiException(
-          'Study AI needs the proxy running, or a custom key in Settings.',
+                    'Study AI needs a built-in key in this build, or a custom key in Settings.',
         );
       }
       res = await http
@@ -644,7 +714,7 @@ doNotMap must name at least one tempting false mapping.
       final key = studyAiSettings.apiKey?.trim() ?? '';
       if (key.isEmpty) {
         throw StudyAiException(
-          'Study AI needs the proxy running, or a custom key in Settings.',
+                    'Study AI needs a built-in key in this build, or a custom key in Settings.',
         );
       }
       res = await http

@@ -53,6 +53,12 @@ app.*.map.json
 server/.env
 server/.venv/
 
+# Support form worker secrets — never commit
+support-worker/.dev.vars
+support-worker/.env
+support-worker/node_modules/
+support-worker/.wrangler/
+
 # Apple signing material — never commit
 *.p8
 *.p12

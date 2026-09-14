@@ -600,7 +600,12 @@ class _CalendarPageState extends State<CalendarPage> {
                           e.startMinutes,
                           e.endMinutes,
                         );
-                        final color = _subjectColor(e.subjectId, byId, scheme);
+                        final color = e.resolvedColor(
+                          subjectColor: e.subjectId != null
+                              ? byId[e.subjectId!]?.color
+                              : null,
+                          fallback: scheme.primary,
+                        );
 
                         return Container(
                           padding: const EdgeInsets.all(12),

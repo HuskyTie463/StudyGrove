@@ -6,7 +6,6 @@ import '../services/note_service.dart';
 import '../ui/math_text.dart';
 import '../ui/shared_ui.dart';
 import '../ui/shell_nav.dart';
-import '../ui/shell_scope.dart';
 
 class NotesPage extends StatelessWidget {
   const NotesPage({
@@ -19,8 +18,6 @@ class NotesPage extends StatelessWidget {
   final NoteService noteService;
 
   Future<void> _edit(BuildContext context, {NoteItem? existing}) async {
-    final scopedId =
-        existing?.subjectId ?? ShellScope.maybeOf(context)?.subjectId;
     final titleCtrl = TextEditingController(text: existing?.title ?? '');
     final bodyCtrl = TextEditingController(text: existing?.body ?? '');
     final ok = await showDialog<bool>(
@@ -76,7 +73,6 @@ class NotesPage extends StatelessWidget {
       id: existing?.id,
       title: title.isEmpty ? 'Untitled' : title,
       body: body,
-      subjectId: scopedId,
     );
   }
 
@@ -128,18 +124,7 @@ class NotesPage extends StatelessWidget {
                         !snap.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    final all = snap.data ?? const <NoteItem>[];
-                    final scope = ShellScope.maybeOf(context);
-                    final notes = all
-                        .where(
-                          (n) => matchesSelectedSubject(
-                            selectedId: scope?.subjectId,
-                            subjects: scope?.subjects ?? const [],
-                            itemSubjectId: n.subjectId,
-                            title: n.title,
-                          ),
-                        )
-                        .toList();
+                    final notes = snap.data ?? const <NoteItem>[];
                     if (notes.isEmpty) {
                       return Text(
                         'No notes yet. Tap + to add one.',

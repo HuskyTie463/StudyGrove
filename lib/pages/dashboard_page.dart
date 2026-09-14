@@ -1271,7 +1271,6 @@ class _UpcomingAssessmentsPanel extends StatelessWidget {
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (_, i) {
         final a = assessments[i];
-        final pct = (a.progress * 100).round();
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -1291,21 +1290,25 @@ class _UpcomingAssessmentsPanel extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               MathText(a.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [GreenChip(a.dueLabel), GreenChip('$pct%')],
-              ),
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: a.progress.clamp(0, 1),
-                  minHeight: 8,
-                  backgroundColor: scheme.onSurface.withValues(alpha: 0.10),
+              const SizedBox(height: 6),
+              Text(
+                formatDueDateTime(context, a.dueDate, timeZoneId: a.timeZoneId),
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: 0.72),
+                  fontSize: 13,
                 ),
               ),
+              if (a.subtasks.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: a.progress.clamp(0, 1),
+                    minHeight: 8,
+                    backgroundColor: scheme.onSurface.withValues(alpha: 0.10),
+                  ),
+                ),
+              ],
             ],
           ),
         );

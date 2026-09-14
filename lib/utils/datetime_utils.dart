@@ -28,6 +28,20 @@ String formatTimeRange(BuildContext context, int startMinutes, int endMinutes) {
   return '$start – $end';
 }
 
+/// Calendar due date/time (not a “due in N days” countdown).
+String formatDueDateTime(
+  BuildContext context,
+  DateTime due, {
+  String? timeZoneId,
+  bool fullDate = false,
+}) {
+  final loc = MaterialLocalizations.of(context);
+  final date = fullDate ? loc.formatFullDate(due) : loc.formatMediumDate(due);
+  final time = TimeOfDay.fromDateTime(due).format(context);
+  final tz = (timeZoneId ?? '').trim();
+  return tz.isEmpty ? '$date · $time' : '$date · $time · $tz';
+}
+
 String formatDurationLabel(int startMinutes, int endMinutes) {
   final mins = (endMinutes - startMinutes).clamp(0, 24 * 60);
   if (mins < 60) return '${mins}m';

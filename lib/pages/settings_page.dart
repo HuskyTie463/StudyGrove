@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/user_data_service.dart';
 import '../services/study_ai_client.dart';
 import '../services/study_ai_settings.dart';
+import '../legal/privacy_policy_copy.dart';
 import '../theme/design_tokens.dart';
 import '../ui/sg_primitives.dart';
+import 'licence_agreement_page.dart';
+import 'privacy_policy_page.dart';
+import 'settings_subscription_card.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -104,6 +109,14 @@ class SettingsPage extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  Future<void> _openSupport(BuildContext context) async {
+    final uri = Uri.parse(studyGroveSupportUrl);
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      _toast(context, 'Could not open the support page.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -119,11 +132,60 @@ class SettingsPage extends StatelessWidget {
             style: TextStyle(color: t.textMuted),
           ),
               SizedBox(height: t.gap(3)),
+              const SettingsSubscriptionCard(),
+              SizedBox(height: t.gap(3)),
               const _StudyAiKeyCard(),
               SizedBox(height: t.gap(3)),
               Text(
                 'Colour themes, wallpaper, and light/dark live in the top bar — paint menu and Backgrounds.',
                 style: TextStyle(color: t.textMuted, height: 1.4),
+              ),
+              const Divider(),
+              Text('Legal', style: Theme.of(context).textTheme.titleLarge),
+              SizedBox(height: t.gap(1)),
+              Text(
+                studyGroveCopyrightLine,
+                style: TextStyle(color: t.textMuted, height: 1.4, fontSize: 13),
+              ),
+              SizedBox(height: t.gap(1)),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.gavel_outlined),
+                title: const Text('Beta Software Licence Agreement'),
+                subtitle: const Text('Review the current agreement.'),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const LicenceAgreementPage(
+                      mode: LicenceAgreementMode.review,
+                    ),
+                  ),
+                ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.policy_outlined),
+                title: const Text('Privacy Policy'),
+                subtitle: const Text(
+                  'How licence acceptance is stored and retained.',
+                ),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PrivacyPolicyPage(),
+                  ),
+                ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.mail_outline),
+                title: const Text('Support'),
+                subtitle: const Text(
+                  'Opens the public support form. Replies come by email.',
+                ),
+                onTap: () => _openSupport(context),
+              ),
+              Text(
+                studyGrovePrivacyRetentionNote,
+                style: TextStyle(color: t.textMuted, height: 1.4, fontSize: 13),
               ),
               const Divider(),
               ListTile(
@@ -183,7 +245,7 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
             Text(
               studyAiSettings.usingCustomKey
                   ? 'Using a custom key you saved on this device. It is sent only to ${studyAiSettings.provider.label}.'
-                  : 'Study Grove talks to a small server that holds the model keys. Nothing is shown or stored in this app.',
+                  : 'Study AI is built in. Open Advanced only if you want to use your own key.',
               style: TextStyle(color: t.textMuted, height: 1.45, fontSize: 13),
             ),
             SizedBox(height: t.gap(1.5)),
@@ -260,11 +322,11 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
                   ),
                   if (studyAiSettings.usingCustomKey)
                     SgSecondaryButton(
-                      label: 'Use server',
+                      label: 'Use built-in',
                       onPressed: () async {
                         await studyAiSettings.resetToBundled();
                         _ctrl.clear();
-                        setState(() => _status = 'Back to the Study AI server.');
+                        setState(() => _status = 'Using built-in Study AI.');
                       },
                     ),
                 ],
@@ -312,12 +374,12 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
                   ),
                   if (studyAiSettings.usingCustomTtsKey)
                     SgSecondaryButton(
-                      label: 'Use server for Listen',
+                      label: 'Use built-in Listen',
                       onPressed: () async {
                         await studyAiSettings.setTtsOpenAiKey('');
                         _ttsCtrl.clear();
                         setState(
-                          () => _ttsStatus = 'Listen uses the Study AI server.',
+                          () => _ttsStatus = 'Listen uses the built-in key.',
                         );
                       },
                     ),
@@ -337,7 +399,7 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
       _ctrl.clear();
       setState(() => _status = studyAiSettings.usingCustomKey
           ? 'Custom key saved on this device.'
-          : 'Using the Study AI server.');
+          : 'Using built-in Study AI.');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -357,6 +419,7 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
         system: 'Reply with exactly: ok',
         user: 'ping',
         maxTokens: 16,
+        countTowardAllowance: false,
       );
       setState(() => _status = reply.toLowerCase().contains('ok')
           ? 'Study AI is working.'
@@ -376,7 +439,7 @@ class _StudyAiKeyCardState extends State<_StudyAiKeyCard> {
       setState(
         () => _ttsStatus = studyAiSettings.usingCustomTtsKey
             ? 'Custom Listen key saved on this device.'
-            : 'Listen uses the Study AI server.',
+            : 'Listen uses the built-in key.',
       );
     } catch (e) {
       setState(() => _ttsStatus = e.toString());

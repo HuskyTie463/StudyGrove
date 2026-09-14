@@ -1,0 +1,6 @@
+# Copy to .dev.vars in this folder for local wrangler. Do not commit .dev.vars.
+# set on the host
+SUPPORT_INBOX=
+RESEND_API_KEY=
+# optional. Leave empty to use Resend’s onboarding sender.
+RESEND_FROM=

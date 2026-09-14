@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en" data-support-api="">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#F3EBE3">
+  <meta name="robots" content="noindex,nofollow">
+  <!--
+    Study Grove store support form (Microsoft Partner Center → Support info URL).
+    After GitHub Pages is on: https://huskytie463.github.io/StudyGrove/support/
+    Mail is sent by the Cloudflare Worker. The inbox lives only in host secrets
+    named SUPPORT_INBOX — never in this page.
+  -->
+  <title>Study Grove — Support</title>
+  <style>
+    :root {
+      --paper: #f3ebe3;
+      --page: #f7f1ea;
+      --leaf: #fffbf7;
+      --ink: #0e1613;
+      --muted: #5c6b62;
+      --line: #3f5249;
+      --sage: #1f6b4a;
+      --sage-deep: #164d36;
+      --clay: #a85a42;
+      --ok: #2f7a4e;
+      --err: #8f2e24;
+      --shadow: 0 18px 50px rgba(23, 32, 28, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+    }
+
+    body {
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(111, 169, 138, 0.16), transparent 55%),
+        radial-gradient(900px 500px at 110% 10%, rgba(168, 90, 66, 0.08), transparent 50%),
+        var(--paper);
+    }
+
+    .wrap {
+      width: min(40rem, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2.75rem 0 4rem;
+    }
+
+    .mark {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      color: var(--sage);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    }
+
+    .mark svg { flex: none; }
+
+    h1 {
+      margin: 0.85rem 0 0.4rem;
+      font-size: clamp(1.8rem, 4vw, 2.35rem);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+
+    .lede {
+      margin: 0 0 1.6rem;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 1.05rem;
+    }
+
+    form {
+      background: linear-gradient(180deg, var(--leaf), var(--page));
+      border: 1px solid rgba(63, 82, 73, 0.22);
+      border-radius: 18px;
+      padding: 1.35rem 1.35rem 1.2rem;
+      box-shadow: var(--shadow);
+    }
+
+    label {
+      display: block;
+      margin: 0.85rem 0 0.35rem;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      font-size: 0.82rem;
+      letter-spacing: 0.02em;
+      color: var(--sage-deep);
+    }
+
+    label .req { color: var(--clay); }
+
+    input, textarea {
+      width: 100%;
+      border: 1px solid rgba(63, 82, 73, 0.35);
+      background: #fffdf9;
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 0.7rem 0.8rem;
+      font: inherit;
+      font-size: 1rem;
+    }
+
+    input:focus, textarea:focus {
+      outline: 2px solid var(--sage);
+      outline-offset: 1px;
+    }
+
+    textarea { min-height: 9.5rem; resize: vertical; }
+
+    .hp {
+      position: absolute;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.85rem;
+      margin-top: 1.15rem;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      background: var(--sage);
+      color: #f7fff8;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      font-size: 0.95rem;
+      letter-spacing: 0.02em;
+      padding: 0.72rem 1.2rem;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    button:hover { background: var(--sage-deep); }
+    button:disabled { opacity: 0.55; cursor: wait; }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+
+    .banner {
+      display: none;
+      margin: 0 0 1rem;
+      padding: 0.85rem 1rem;
+      border-radius: 12px;
+      line-height: 1.45;
+    }
+
+    .banner.ok {
+      display: block;
+      background: rgba(47, 122, 78, 0.12);
+      color: var(--ok);
+    }
+
+    .banner.err {
+      display: block;
+      background: rgba(143, 46, 36, 0.1);
+      color: var(--err);
+    }
+
+    footer {
+      margin-top: 1.4rem;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="mark">
+      <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" d="M12 2c.4 3.2-1.2 5.4-3.6 7.1 2.2.2 4 .9 5.6 2.3C15.6 7.8 18 5.6 22 5c-1.5 3.6-4 5.4-7.2 6.2 2.3 1.7 3.5 4 3.2 7.3-2.8-.7-4.8-2.2-6-4.6-1.1 2.6-3 4.3-6 5.1.2-3.4 1.7-5.8 4.3-7.3C7.6 10.6 6 8.4 6 5.2 8.4 5.6 10.2 4.3 12 2z"/>
+      </svg>
+      Study Grove
+    </div>
+    <h1>A quiet note for the grove</h1>
+    <p class="lede">
+      Ask about the app, a store listing, or something that is not working.
+      We read every message. Please include a reply email.
+    </p>
+
+    <div id="banner" class="banner" role="status" aria-live="polite"></div>
+
+    <form id="support-form" novalidate>
+      <label for="name">Name <span class="req">*</span></label>
+      <input id="name" name="name" autocomplete="name" maxlength="120" required>
+
+      <label for="email">Reply email <span class="req">*</span></label>
+      <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>
+
+      <label for="context">App version / Windows (optional)</label>
+      <input id="context" name="context" maxlength="160" placeholder="e.g. Windows 11, Study Grove 1.0.6">
+
+      <label for="message">Question or message <span class="req">*</span></label>
+      <textarea id="message" name="message" maxlength="8000" required></textarea>
+
+      <div class="hp" aria-hidden="true">
+        <label for="website">Website</label>
+        <input id="website" name="website" tabindex="-1" autocomplete="off">
+      </div>
+
+      <div class="row">
+        <button type="submit" id="send">Send note</button>
+        <p class="hint">You will see a thank-you here if it was accepted. Replies come to the email you entered.</p>
+      </div>
+    </form>
+
+    <footer>
+      © 2026 Adara Curry. Study Grove™. This page does not list a mailbox.
+    </footer>
+  </main>
+
+  <script>
+    // Public Worker origin only. Left as a placeholder; GitHub Pages can
+    // replace it from the SUPPORT_WORKER_URL repository variable. Never put
+    // SUPPORT_INBOX here.
+    window.SUPPORT_API_ORIGIN = "__SUPPORT_API_ORIGIN__";
+
+    (function () {
+      var form = document.getElementById("support-form");
+      var banner = document.getElementById("banner");
+      var send = document.getElementById("send");
+
+      function apiOrigin() {
+        var raw = String(window.SUPPORT_API_ORIGIN || "").trim();
+        if (raw && raw.indexOf("__SUPPORT_API_ORIGIN__") === -1) {
+          return raw.replace(/\/$/, "");
+        }
+        var fromAttr = document.documentElement.getAttribute("data-support-api") || "";
+        fromAttr = fromAttr.trim();
+        if (fromAttr) return fromAttr.replace(/\/$/, "");
+        if (!/github\.io$/i.test(location.hostname)) {
+          return location.origin.replace(/\/$/, "");
+        }
+        return "";
+      }
+
+      function show(kind, text) {
+        banner.className = "banner " + kind;
+        banner.textContent = text;
+      }
+
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var origin = apiOrigin();
+        if (!origin) {
+          show("err", "This form is not connected yet. Please try again later.");
+          return;
+        }
+
+        var name = document.getElementById("name").value.trim();
+        var email = document.getElementById("email").value.trim();
+        var context = document.getElementById("context").value.trim();
+        var message = document.getElementById("message").value.trim();
+        var honeypot = document.getElementById("website").value;
+
+        if (!name || !email || !message) {
+          show("err", "Please add your name, a reply email, and a message.");
+          return;
+        }
+
+        send.disabled = true;
+        show("ok", "Sending…");
+
+        fetch(origin + "/support", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({
+            name: name,
+            email: email,
+            context: context,
+            message: message,
+            website: honeypot
+          })
+        }).then(function (res) {
+          return res.json().then(function (body) {
+            return { ok: res.ok && body && body.ok, status: res.status };
+          }).catch(function () {
+            return { ok: false, status: res.status };
+          });
+        }).then(function (result) {
+          if (result.ok) {
+            form.reset();
+            show("ok", "Thank you. Your note is on its way. Watch the reply email you entered.");
+            return;
+          }
+          if (result.status === 429) {
+            show("err", "Please wait a little before sending another note.");
+            return;
+          }
+          show("err", "We could not send that just now. Wait a moment and try again.");
+        }).catch(function () {
+          show("err", "We could not send that just now. Check your connection and try again.");
+        }).finally(function () {
+          send.disabled = false;
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

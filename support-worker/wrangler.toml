@@ -1,0 +1,7 @@
+name = "study-grove-support"
+main = "src/index.js"
+compatibility_date = "2026-01-15"
+
+# Public page origin only. Do not put SUPPORT_INBOX or mail passwords here.
+[vars]
+SUPPORT_PAGE_ORIGIN = "https://huskytie463.github.io"

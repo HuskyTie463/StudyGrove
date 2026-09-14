@@ -2,15 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../models/models.dart';
 import '../services/assessment_service.dart';
-import '../services/readiness_engine.dart';
+import '../services/lecture_lab_service.dart';
+import '../services/note_service.dart';
 import '../services/subject_service.dart';
 import '../theme/design_tokens.dart';
 import '../theme/style_family.dart';
 import '../main.dart';
+import '../ui/assessment_materials.dart';
 import '../ui/math_text.dart';
 import '../ui/sg_primitives.dart';
 import '../ui/shell_scope.dart';
-import '../ui/style_motifs.dart';
+import '../utils/datetime_utils.dart';
 
 class AssessmentsPage extends StatefulWidget {
   const AssessmentsPage({
@@ -20,6 +22,8 @@ class AssessmentsPage extends StatefulWidget {
     required this.assessmentService,
     required this.onOpenAssessment,
     this.subjectService,
+    this.lectureLabService,
+    this.noteService,
     this.onContinuePreparation,
     this.focusSubjectId,
   });
@@ -28,6 +32,8 @@ class AssessmentsPage extends StatefulWidget {
   final ValueChanged<double> onOpacityChanged;
   final AssessmentService assessmentService;
   final SubjectService? subjectService;
+  final LectureLabService? lectureLabService;
+  final NoteService? noteService;
   final void Function(Assessment assessment) onOpenAssessment;
   final void Function(Assessment assessment)? onContinuePreparation;
   final String? focusSubjectId;
@@ -38,7 +44,7 @@ class AssessmentsPage extends StatefulWidget {
 
 class _AssessmentsPageState extends State<AssessmentsPage> {
   late final Stream<List<Assessment>> _assessmentsStream;
-  final _engine = const AssessmentReadinessEngine();
+  bool _showCompleted = false;
 
   @override
   void initState() {
@@ -127,6 +133,10 @@ class _AssessmentsPageState extends State<AssessmentsPage> {
       ),
     )]
       ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+    final active = scoped.where((a) => a.isActive).toList();
+    final done = scoped.where((a) => !a.isActive).toList()
+      ..sort((a, b) => b.dueDate.compareTo(a.dueDate));
+    final shown = _showCompleted ? done : active;
     final subjectById = {for (final s in subjects) s.id: s};
 
     return CustomScrollView(
@@ -140,34 +150,73 @@ class _AssessmentsPageState extends State<AssessmentsPage> {
           ),
           sliver: SliverToBoxAdapter(
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    'Assessments',
-                    style: Theme.of(context).textTheme.titleLarge,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _showCompleted ? 'Completed' : 'Assessments',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      SizedBox(height: t.gap(0.5)),
+                      Text(
+                        _showCompleted
+                            ? 'Bring one back whenever you need it'
+                            : 'Soonest due dates first',
+                        style: TextStyle(
+                          color: t.textMuted,
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                SgPrimaryButton(
-                  label: 'Create',
-                  icon: Icons.add,
-                  onPressed: () => _quickCreate(context, subjects),
+                TextButton(
+                  onPressed: done.isEmpty && !_showCompleted
+                      ? null
+                      : () => setState(() => _showCompleted = !_showCompleted),
+                  child: Text(
+                    _showCompleted
+                        ? 'Active'
+                        : (done.isEmpty
+                            ? 'Completed'
+                            : 'Completed (${done.length})'),
+                  ),
                 ),
+                if (!_showCompleted) ...[
+                  SizedBox(width: t.gap(1)),
+                  SgPrimaryButton(
+                    label: 'Create',
+                    icon: Icons.add,
+                    onPressed: () => _quickCreate(context, subjects),
+                  ),
+                ],
               ],
             ),
           ),
         ),
         SliverToBoxAdapter(child: SizedBox(height: t.gap(2))),
-        if (scoped.isEmpty)
+        if (shown.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
             child: SgEmptyState(
-              title: 'No assessments',
-              body: 'Create one with a due date.',
-              action: SgPrimaryButton(
-                label: 'Create',
-                icon: Icons.add,
-                onPressed: () => _quickCreate(context, subjects),
-              ),
+              title: _showCompleted ? 'Nothing completed yet' : 'No assessments',
+              body: _showCompleted
+                  ? 'Mark an assessment complete to archive it here.'
+                  : 'Create one with a due date.',
+              action: _showCompleted
+                  ? SgSecondaryButton(
+                      label: 'Back to assessments',
+                      onPressed: () => setState(() => _showCompleted = false),
+                    )
+                  : SgPrimaryButton(
+                      label: 'Create',
+                      icon: Icons.add,
+                      onPressed: () => _quickCreate(context, subjects),
+                    ),
             ),
           )
         else
@@ -179,17 +228,19 @@ class _AssessmentsPageState extends State<AssessmentsPage> {
               48,
             ),
             sliver: SliverList.separated(
-              itemCount: scoped.length,
+              itemCount: shown.length,
               separatorBuilder: (_, _) => SizedBox(height: t.gap(1.5)),
               itemBuilder: (context, i) {
-                final a = scoped[i];
+                final a = shown[i];
                 return _AssessmentDecisionCard(
                   assessment: a,
-                  evidence: _engine.explain(a),
                   subject:
                       a.subjectId == null ? null : subjectById[a.subjectId!],
-                  nextAction: _engine.bestNextAction(a, _engine.explain(a)),
+                  archived: !a.isActive,
                   onOpen: () => widget.onOpenAssessment(a),
+                  onRestore: _showCompleted
+                      ? () => widget.assessmentService.restoreAssessment(a.id)
+                      : null,
                 );
               },
             ),
@@ -221,8 +272,10 @@ class _AssessmentsPageState extends State<AssessmentsPage> {
         }
       }
     }
-    var showAdvanced = false;
     final tz = DateTime.now().timeZoneName;
+    var createError = '';
+    final pending = <PendingAssessmentMaterial>[];
+    var materialsBusy = false;
 
     final ok = await showModalBottomSheet<bool>(
       context: context,
@@ -243,19 +296,65 @@ class _AssessmentsPageState extends State<AssessmentsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Quick create',
-                        style: Theme.of(ctx).textTheme.headlineSmall),
-                    const SizedBox(height: 12),
+                    Text(
+                      'New assessment',
+                      style: Theme.of(ctx).textTheme.headlineSmall,
+                    ),
+                    SizedBox(height: t.gap(0.5)),
+                    Text(
+                      'Name, course, type and due date are saved with the card.',
+                      style: TextStyle(color: t.textMuted, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
                     TextField(
                       controller: titleCtrl,
+                      textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(labelText: 'Name'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: courseCtrl,
+                      textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(labelText: 'Course'),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
+                    if (subjects.isEmpty)
+                      Text(
+                        'Add a subject in Subjects to link this assessment and its timer to Time.',
+                        style: TextStyle(color: t.textMuted, fontSize: 13),
+                      )
+                    else
+                      DropdownButtonFormField<String?>(
+                        value: subjectId,
+                        decoration: const InputDecoration(labelText: 'Subject'),
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('None'),
+                          ),
+                          ...subjects.map(
+                            (s) => DropdownMenuItem(
+                              value: s.id,
+                              child: Text(s.label),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) {
+                          setLocal(() {
+                            subjectId = v;
+                            if (v != null) {
+                              for (final s in subjects) {
+                                if (s.id == v &&
+                                    courseCtrl.text.trim().isEmpty) {
+                                  courseCtrl.text = s.label;
+                                  break;
+                                }
+                              }
+                            }
+                          });
+                        },
+                      ),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<AssessmentType>(
                       value: type,
                       decoration: const InputDecoration(labelText: 'Type'),
@@ -267,13 +366,13 @@ class _AssessmentsPageState extends State<AssessmentsPage> {
                           .toList(),
                       onChanged: (v) => setLocal(() => type = v ?? type),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
                         'Due ${MaterialLocalizations.of(ctx).formatMediumDate(due)} · ${dueTime.format(ctx)}',
                       ),
-                      subtitle: Text('Timezone: $tz (never hidden)'),
+                      subtitle: Text(tz),
                       trailing: const Icon(Icons.event),
                       onTap: () async {
                         final d = await showDatePicker(
@@ -296,57 +395,116 @@ class _AssessmentsPageState extends State<AssessmentsPage> {
                         });
                       },
                     ),
-                    TextButton(
-                      onPressed: () =>
-                          setLocal(() => showAdvanced = !showAdvanced),
-                      child: Text(
-                        showAdvanced ? 'Hide advanced' : 'Show advanced',
+                    TextField(
+                      controller: weightCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Weight %',
                       ),
                     ),
-                    if (showAdvanced) ...[
-                      TextField(
-                        controller: weightCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Weight % (optional)',
-                        ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: prepCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Prep minutes',
                       ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: prepCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Est. prep minutes (optional)',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      if (subjects.isNotEmpty)
-                        DropdownButtonFormField<String?>(
-                          value: subjectId,
-                          decoration:
-                              const InputDecoration(labelText: 'Subject'),
-                          items: [
-                            const DropdownMenuItem(
-                              value: null,
-                              child: Text('None'),
-                            ),
-                            ...subjects.map(
-                              (s) => DropdownMenuItem(
-                                value: s.id,
-                                child: Text(s.label),
-                              ),
-                            ),
-                          ],
-                          onChanged: (v) => setLocal(() => subjectId = v),
-                        ),
-                    ],
+                    ),
                     const SizedBox(height: 16),
+                    Text(
+                      'Materials',
+                      style: Theme.of(ctx).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    AssessmentMaterialsActions(
+                      busy: materialsBusy,
+                      onUpload: () async {
+                        setLocal(() => materialsBusy = true);
+                        try {
+                          final added = await pickAssessmentUploads();
+                          if (added.isEmpty) return;
+                          setLocal(() {
+                            for (final item in added) {
+                              if (pending.any(
+                                (e) =>
+                                    e.attachment.linkKey ==
+                                    item.attachment.linkKey,
+                              )) {
+                                continue;
+                              }
+                              pending.add(item);
+                            }
+                          });
+                        } finally {
+                          if (ctx.mounted) {
+                            setLocal(() => materialsBusy = false);
+                          }
+                        }
+                      },
+                      onPickExisting: () async {
+                        setLocal(() => materialsBusy = true);
+                        try {
+                          final picked = await _pickExistingMaterials(
+                            ctx,
+                            already: pending
+                                .map((e) => e.attachment.linkKey)
+                                .toSet(),
+                          );
+                          if (picked.isEmpty) return;
+                          setLocal(() {
+                            for (final att in picked) {
+                              if (pending.any(
+                                (e) => e.attachment.linkKey == att.linkKey,
+                              )) {
+                                continue;
+                              }
+                              pending.add(
+                                PendingAssessmentMaterial(attachment: att),
+                              );
+                            }
+                          });
+                        } finally {
+                          if (ctx.mounted) {
+                            setLocal(() => materialsBusy = false);
+                          }
+                        }
+                      },
+                    ),
+                    if (pending.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      AssessmentPendingChips(
+                        pending: pending,
+                        onRemove: (item) =>
+                            setLocal(() => pending.remove(item)),
+                      ),
+                    ],
+                    if (createError.isNotEmpty) ...[
+                      Text(
+                        createError,
+                        style: TextStyle(color: t.destructive, fontSize: 13),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    const SizedBox(height: 8),
                     SgPrimaryButton(
                       label: 'Create',
                       expanded: true,
                       onPressed: () {
-                        if (titleCtrl.text.trim().isEmpty ||
-                            courseCtrl.text.trim().isEmpty) {
+                        var course = courseCtrl.text.trim();
+                        if (course.isEmpty && subjectId != null) {
+                          for (final s in subjects) {
+                            if (s.id == subjectId) {
+                              course = s.label;
+                              courseCtrl.text = course;
+                              break;
+                            }
+                          }
+                        }
+                        if (titleCtrl.text.trim().isEmpty || course.isEmpty) {
+                          setLocal(
+                            () => createError =
+                                'Add a name and course to create.',
+                          );
                           return;
                         }
                         Navigator.pop(ctx, true);
@@ -362,7 +520,13 @@ class _AssessmentsPageState extends State<AssessmentsPage> {
       },
     );
 
-    if (ok != true) return;
+    if (ok != true) {
+      titleCtrl.dispose();
+      courseCtrl.dispose();
+      weightCtrl.dispose();
+      prepCtrl.dispose();
+      return;
+    }
     final dueDateTime = DateTime(
       due.year,
       due.month,
@@ -370,8 +534,17 @@ class _AssessmentsPageState extends State<AssessmentsPage> {
       dueTime.hour,
       dueTime.minute,
     );
-    await widget.assessmentService.addAssessment(
-      course: courseCtrl.text.trim(),
+    var course = courseCtrl.text.trim();
+    if (course.isEmpty && subjectId != null) {
+      for (final s in subjects) {
+        if (s.id == subjectId) {
+          course = s.label;
+          break;
+        }
+      }
+    }
+    final id = await widget.assessmentService.addAssessment(
+      course: course,
       title: titleCtrl.text.trim(),
       dueDate: dueDateTime,
       subjectId: subjectId,
@@ -380,126 +553,218 @@ class _AssessmentsPageState extends State<AssessmentsPage> {
       estimatedPrepMinutes: int.tryParse(prepCtrl.text.trim()),
       timeZoneId: tz,
     );
+    if (pending.isNotEmpty) {
+      await _persistPendingMaterials(id, pending);
+    }
+    titleCtrl.dispose();
+    courseCtrl.dispose();
+    weightCtrl.dispose();
+    prepCtrl.dispose();
+  }
+
+  Future<void> _persistPendingMaterials(
+    String assessmentId,
+    List<PendingAssessmentMaterial> pending,
+  ) async {
+    final links = <AssessmentAttachment>[];
+    for (final item in pending) {
+      if (item.needsUpload) {
+        try {
+          await widget.assessmentService.attachUploadedFile(
+            assessmentId: assessmentId,
+            filename: item.attachment.name,
+            sourcePath: item.sourcePath,
+            bytes: item.bytes,
+          );
+        } catch (_) {}
+      } else {
+        links.add(item.attachment);
+      }
+    }
+    if (links.isNotEmpty) {
+      await widget.assessmentService.attachLinks(assessmentId, links);
+    }
+  }
+
+  Future<List<AssessmentAttachment>> _pickExistingMaterials(
+    BuildContext context, {
+    required Set<String> already,
+  }) async {
+    final lab = widget.lectureLabService;
+    final notes = widget.noteService;
+    try {
+      final lectures = lab == null
+          ? const <LectureNote>[]
+          : await lab.streamLectures().first;
+      final noteItems = notes == null
+          ? const <NoteItem>[]
+          : await notes.streamNotes().first;
+      final assessments =
+          await widget.assessmentService.streamAssessments().first;
+      if (!context.mounted) return const [];
+      return showAssessmentLibraryPicker(
+        context: context,
+        lectures: lectures,
+        notes: noteItems,
+        libraryFiles: libraryFilesFrom(assessments),
+        alreadyLinked: already,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load saved files: $e')),
+        );
+      }
+      return const [];
+    }
   }
 }
-
-Color _pressureColor(DesignTokens t, ReadinessState s) => switch (s) {
-      ReadinessState.onTrack => t.pressureCalm,
-      ReadinessState.needsAttention => t.pressureWatch,
-      ReadinessState.timeIsTight => t.pressureTight,
-      ReadinessState.missingInformation => t.pressureMissing,
-    };
-
-IconData _pressureIcon(ReadinessState s) {
-  if (themeController.style == VisualStyleFamily.naturalistic) {
-    return Icons.spa_outlined;
-  }
-  return switch (s) {
-    ReadinessState.onTrack => Icons.check_circle_outline,
-    ReadinessState.needsAttention => Icons.visibility_outlined,
-    ReadinessState.timeIsTight => Icons.schedule,
-    ReadinessState.missingInformation => Icons.help_outline,
-  };
-}
-
 
 class _AssessmentDecisionCard extends StatelessWidget {
   const _AssessmentDecisionCard({
     required this.assessment,
-    required this.evidence,
     required this.subject,
-    required this.nextAction,
     required this.onOpen,
+    this.archived = false,
+    this.onRestore,
   });
 
   final Assessment assessment;
-  final ReadinessEvidence evidence;
   final Subject? subject;
-  final String nextAction;
   final VoidCallback onOpen;
+  final bool archived;
+  final VoidCallback? onRestore;
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final color = _pressureColor(t, evidence.state);
+    final course = (subject?.label ?? assessment.course).trim();
+    final openTask = assessment.subtasks.where((s) => !s.done);
+    final dueFact = formatDueDateTime(
+      context,
+      assessment.dueDate,
+      timeZoneId: assessment.timeZoneId,
+    );
+    final facts = <String>[
+      if (assessment.weightPercent != null)
+        '${assessment.weightPercent!.round()}% weight',
+      if (assessment.estimatedPrepMinutes != null)
+        '~${assessment.estimatedPrepMinutes} min prep',
+      if (assessment.attachments.isNotEmpty)
+        '${assessment.attachments.length} '
+            '${assessment.attachments.length == 1 ? 'material' : 'materials'}',
+    ];
 
     return SgCard(
       onTap: onOpen,
-      accent: color.withValues(alpha: 0.4),
       semanticLabel:
-          '${assessment.title}, ${evidence.state.calmLabel}, ${assessment.dueLabel}',
-      child: Row(
+          '${assessment.title}, ${archived ? 'Completed' : assessment.type.label}, $dueFact',
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12, top: 2),
-            child: StyleAssessmentMark(
-              size: 26,
-              color: color,
-              progress: assessment.progress,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: MathText(
+                  assessment.title,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              if (archived)
+                SgStatusTag(
+                  label: 'Completed',
+                  color: t.textMuted,
+                  icon: Icons.inventory_2_outlined,
+                ),
+            ],
           ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          if (course.isNotEmpty || assessment.type != AssessmentType.other) ...[
+            const SizedBox(height: 6),
+            Text(
+              [
+                if (course.isNotEmpty) course,
+                assessment.type.label,
+              ].join(' · '),
+              style: TextStyle(color: t.textMuted, fontSize: 13),
+            ),
+          ],
+          const SizedBox(height: 6),
+          Text(
+            dueFact,
+            style: TextStyle(color: t.textSecondary, fontSize: 13),
+          ),
+          if (facts.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: MathText(
-                        assessment.title,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    SgStatusTag(
-                      label: evidence.state.calmLabel,
-                      color: color,
-                      icon: _pressureIcon(evidence.state),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${subject?.label ?? assessment.course} · ${assessment.type.label}',
-                  style: TextStyle(color: t.textMuted, fontSize: 13),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  [
-                    assessment.dueLabel,
-                    if (assessment.weightPercent != null)
-                      '${assessment.weightPercent!.round()}% weight',
-                    if (evidence.estimatedPrepRemainingMinutes != null)
-                      '~${evidence.estimatedPrepRemainingMinutes} min left',
-                  ].join(' · '),
-                  style: TextStyle(color: t.textSecondary, fontSize: 13),
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: assessment.progress.clamp(0, 1),
-                    minHeight: 8,
-                    color: color,
-                    backgroundColor: t.bgMuted,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Next: $nextAction',
-                  style: TextStyle(color: t.textPrimary, fontSize: 13),
-                ),
-                if (assessment.linkedTopicIds.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '${assessment.linkedTopicIds.length} linked topic(s)',
-                    style: TextStyle(color: t.textMuted, fontSize: 12),
-                  ),
-                ],
+                for (final fact in facts)
+                  _FactChip(label: fact, color: t.decorationAccent),
               ],
             ),
-          ),
+          ],
+          if (assessment.subtasks.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: assessment.progress.clamp(0, 1),
+                minHeight: 8,
+                color: t.decorationAccent,
+                backgroundColor: t.bgMuted,
+              ),
+            ),
+          ],
+          if (archived) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SgSecondaryButton(
+                label: 'Bring back',
+                icon: Icons.unarchive_outlined,
+                onPressed: onRestore,
+              ),
+            ),
+          ] else if (openTask.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Next: ${openTask.first.title}',
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _FactChip extends StatelessWidget {
+  const _FactChip({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(t.radiusXl),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: t.textSecondary,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }

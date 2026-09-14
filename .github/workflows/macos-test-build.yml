@@ -32,13 +32,20 @@ jobs:
       - name: Build macOS release
         env:
           STUDY_AI_PROXY_URL: ${{ secrets.STUDY_AI_PROXY_URL }}
+          BUNDLED_STUDY_AI_KEY: ${{ secrets.BUNDLED_STUDY_AI_KEY }}
+          BUNDLED_OPENAI_TTS_KEY: ${{ secrets.BUNDLED_OPENAI_TTS_KEY }}
         run: |
+          DART_DEFINES=()
           if [ -n "${STUDY_AI_PROXY_URL:-}" ]; then
-            flutter build macos --release \
-              --dart-define=STUDY_AI_PROXY_URL="$STUDY_AI_PROXY_URL"
-          else
-            flutter build macos --release
+            DART_DEFINES+=(--dart-define="STUDY_AI_PROXY_URL=$STUDY_AI_PROXY_URL")
           fi
+          if [ -n "${BUNDLED_STUDY_AI_KEY:-}" ]; then
+            DART_DEFINES+=(--dart-define="BUNDLED_STUDY_AI_KEY=$BUNDLED_STUDY_AI_KEY")
+          fi
+          if [ -n "${BUNDLED_OPENAI_TTS_KEY:-}" ]; then
+            DART_DEFINES+=(--dart-define="BUNDLED_OPENAI_TTS_KEY=$BUNDLED_OPENAI_TTS_KEY")
+          fi
+          flutter build macos --release "${DART_DEFINES[@]}"
 
       - name: Zip app for USB
         run: |

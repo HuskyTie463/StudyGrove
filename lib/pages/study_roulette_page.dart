@@ -259,14 +259,19 @@ class _StudyRoulettePageState extends State<StudyRoulettePage> with TickerProvid
     final scheme = Theme.of(context).colorScheme;
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          children: [
-            Expanded(
-              child: Center(
-                child: SizedBox(
-                  height: 300,
-                  width: 300,
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final shortest = math.min(constraints.maxWidth, constraints.maxHeight);
+            final diameter = shortest * 0.92;
+            final pointerSize = (diameter * 0.12).clamp(36.0, 72.0);
+
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox(
+                  width: diameter,
+                  height: diameter,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -279,34 +284,53 @@ class _StudyRoulettePageState extends State<StudyRoulettePage> with TickerProvid
                           );
                         },
                         child: CustomPaint(
-                          size: const Size(280, 280),
+                          size: Size(diameter, diameter),
                           painter: _FortuneWheelPainter(
                             labels: RouletteDraw.wheelLabels,
                           ),
                         ),
                       ),
                       Positioned(
-                        top: 2,
+                        top: 0,
                         child: Icon(
                           Icons.arrow_drop_down,
-                          size: 40,
+                          size: pointerSize,
                           color: scheme.onSurface.withValues(alpha: 0.85),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ),
-            SoftButton(
-              label: _spinning ? '…' : 'Spin',
-              icon: Icons.casino,
-              filled: true,
-              onPressed: _spinning ? null : _spin,
-            ),
-            const SizedBox(height: 16),
-            _challengeCard(),
-          ],
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SoftButton(
+                        label: _spinning ? '…' : 'Spin',
+                        icon: Icons.casino,
+                        filled: true,
+                        onPressed: _spinning ? null : _spin,
+                      ),
+                      if (_current != null) ...[
+                        const SizedBox(height: 10),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: constraints.maxHeight * 0.36,
+                          ),
+                          child: SingleChildScrollView(
+                            child: _challengeCard(),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -346,7 +370,7 @@ class _FortuneWheelPainter extends CustomPainter {
 
       final border = Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2
+        ..strokeWidth = (r * 0.008).clamp(1.2, 3.0)
         ..color = Colors.white.withValues(alpha: 0.45);
       canvas.drawArc(rect, start, sweep, true, border);
     }
@@ -363,9 +387,9 @@ class _FortuneWheelPainter extends CustomPainter {
       final tp = TextPainter(
         text: TextSpan(
           text: labels[i],
-          style: const TextStyle(
-            color: Color(0xFF3A3A3A),
-            fontSize: 11,
+          style: TextStyle(
+            color: const Color(0xFF3A3A3A),
+            fontSize: (r * 0.075).clamp(12.0, 28.0),
             fontWeight: FontWeight.w700,
           ),
         ),

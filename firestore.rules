@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // User-scoped data, including licence acceptance records.
+    // Retention: acceptance docs are kept for the life of the account plus
+    // a reasonable period after deletion as required for legal defence
+    // (see in-app Privacy Policy), then deleted with the account where lawful.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // Owner-only: users/{uid}/licenceAcceptances/{docId}
+      match /licenceAcceptances/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+  }
+}

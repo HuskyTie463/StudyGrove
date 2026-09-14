@@ -1,5 +1,7 @@
 // lib/pages/pomodoro_page.dart
 import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/study_time_service.dart';
@@ -152,111 +154,123 @@ class _PomodoroPageState extends State<PomodoroPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width >= 900;
+    final screen = MediaQuery.sizeOf(context);
+    final isWide = screen.width >= 900;
+    final phoneTimerHeight = (screen.height * 0.62).clamp(520.0, 760.0);
 
-    Widget timerPanel(List<Subject> subjects) => FrostPanel(
-          opacity: widget.panelOpacity,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  GreenChip(mode),
-                  const SizedBox(width: 8),
-                  GreenChip("Cycles: $cyclesCompleted"),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (subjects.isEmpty)
-                Text(
-                  'Add a subject first so this session can be counted on the Time tab.',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.78),
-                  ),
-                )
-              else
-                DropdownButtonFormField<String>(
-                  value: subjects.any((s) => s.id == _subjectId)
-                      ? _subjectId
-                      : null,
-                  decoration: const InputDecoration(
-                    labelText: 'Subject',
-                    hintText: 'Required before start',
-                  ),
-                  items: [
-                    for (final s in subjects)
-                      DropdownMenuItem(value: s.id, child: Text(s.label)),
-                  ],
-                  onChanged: (running || widget.initialSubjectId != null)
-                      ? null
-                      : (id) => setState(() => _subjectId = id),
-                ),
-              const SizedBox(height: 18),
-              Center(
-                child: Text(
-                  timeText,
-                  style: const TextStyle(
-                    fontSize: 64,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Center(
-                child: Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  alignment: WrapAlignment.center,
+    Widget timerPanel(List<Subject> subjects) => SizedBox.expand(
+          child: FrostPanel(
+            opacity: widget.panelOpacity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
                   children: [
-                    SoftButton(
-                      label: "Start",
-                      icon: Icons.play_arrow,
-                      filled: true,
-                      onPressed: running ? null : _start,
-                    ),
-                    SoftButton(
-                      label: "Pause",
-                      icon: Icons.pause,
-                      onPressed: running ? _pause : null,
-                    ),
-                    SoftButton(
-                      label: "Reset",
-                      icon: Icons.restart_alt,
-                      onPressed: _reset,
-                    ),
-                    SoftButton(
-                      label: onBreak ? "Skip break" : "Skip focus",
-                      icon: Icons.skip_next,
-                      onPressed: () {
-                        if (!onBreak) {
-                          _logFocusIfNeeded();
-                        }
-                        setState(() {
-                          if (onBreak) {
-                            onBreak = false;
-                            secondsLeft = focusMinutes * 60;
-                            _focusElapsedSeconds = 0;
-                          } else {
-                            onBreak = true;
-                            secondsLeft = breakMinutes * 60;
-                          }
-                        });
-                      },
-                    ),
+                    GreenChip(mode),
+                    const SizedBox(width: 8),
+                    GreenChip("Cycles: $cyclesCompleted"),
                   ],
                 ),
-              ),
-              const SizedBox(height: 14),
-              Center(
-                child: Text(
-                  running ? "Running" : "Idle",
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.84),
+                const SizedBox(height: 10),
+                if (subjects.isEmpty)
+                  Text(
+                    'Add a subject first so this session can be counted on the Time tab.',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.78),
+                    ),
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    value: subjects.any((s) => s.id == _subjectId)
+                        ? _subjectId
+                        : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Subject',
+                      hintText: 'Required before start',
+                    ),
+                    items: [
+                      for (final s in subjects)
+                        DropdownMenuItem(value: s.id, child: Text(s.label)),
+                    ],
+                    onChanged: (running || widget.initialSubjectId != null)
+                        ? null
+                        : (id) => setState(() => _subjectId = id),
+                  ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: Text(
+                        timeText,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 200,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2,
+                          height: 1,
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ],
+                Center(
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      SoftButton(
+                        label: "Start",
+                        icon: Icons.play_arrow,
+                        filled: true,
+                        onPressed: running ? null : _start,
+                      ),
+                      SoftButton(
+                        label: "Pause",
+                        icon: Icons.pause,
+                        onPressed: running ? _pause : null,
+                      ),
+                      SoftButton(
+                        label: "Reset",
+                        icon: Icons.restart_alt,
+                        onPressed: _reset,
+                      ),
+                      SoftButton(
+                        label: onBreak ? "Skip break" : "Skip focus",
+                        icon: Icons.skip_next,
+                        onPressed: () {
+                          if (!onBreak) {
+                            _logFocusIfNeeded();
+                          }
+                          setState(() {
+                            if (onBreak) {
+                              onBreak = false;
+                              secondsLeft = focusMinutes * 60;
+                              _focusElapsedSeconds = 0;
+                            } else {
+                              onBreak = true;
+                              secondsLeft = breakMinutes * 60;
+                            }
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Center(
+                  child: Text(
+                    running ? "Running" : "Idle",
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.84),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         );
 
@@ -299,6 +313,7 @@ class _PomodoroPageState extends State<PomodoroPage> {
             padding: const EdgeInsets.all(18),
             child: isWide
                 ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(flex: 7, child: timerPanel(subjects)),
                       const SizedBox(width: 14),
@@ -308,7 +323,7 @@ class _PomodoroPageState extends State<PomodoroPage> {
                 : SingleChildScrollView(
                     child: Column(
                       children: [
-                        SizedBox(height: 560, child: timerPanel(subjects)),
+                        SizedBox(height: phoneTimerHeight, child: timerPanel(subjects)),
                         const SizedBox(height: 14),
                         settingsPanel(),
                         const SizedBox(height: 18),

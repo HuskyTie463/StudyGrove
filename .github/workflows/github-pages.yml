@@ -1,0 +1,51 @@
+name: Support site
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/github-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Point the form at the Worker
+        env:
+          SUPPORT_WORKER_URL: ${{ vars.SUPPORT_WORKER_URL }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          path = Path("docs/support/index.html")
+          text = path.read_text(encoding="utf-8")
+          raw = os.environ.get("SUPPORT_WORKER_URL", "").strip().rstrip("/")
+          if raw:
+              text = text.replace("__SUPPORT_API_ORIGIN__", raw)
+              text = text.replace('data-support-api=""', f'data-support-api="{raw}"')
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@v4

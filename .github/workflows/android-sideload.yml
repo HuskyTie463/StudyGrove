@@ -29,11 +29,19 @@ jobs:
       - name: Build Android APKs
         env:
           STUDY_AI_PROXY_URL: ${{ secrets.STUDY_AI_PROXY_URL }}
+          BUNDLED_STUDY_AI_KEY: ${{ secrets.BUNDLED_STUDY_AI_KEY }}
+          BUNDLED_OPENAI_TTS_KEY: ${{ secrets.BUNDLED_OPENAI_TTS_KEY }}
         run: |
           set -euo pipefail
           DART_DEFINES=()
           if [ -n "${STUDY_AI_PROXY_URL:-}" ]; then
             DART_DEFINES+=(--dart-define="STUDY_AI_PROXY_URL=$STUDY_AI_PROXY_URL")
+          fi
+          if [ -n "${BUNDLED_STUDY_AI_KEY:-}" ]; then
+            DART_DEFINES+=(--dart-define="BUNDLED_STUDY_AI_KEY=$BUNDLED_STUDY_AI_KEY")
+          fi
+          if [ -n "${BUNDLED_OPENAI_TTS_KEY:-}" ]; then
+            DART_DEFINES+=(--dart-define="BUNDLED_OPENAI_TTS_KEY=$BUNDLED_OPENAI_TTS_KEY")
           fi
           flutter build apk --release --split-per-abi "${DART_DEFINES[@]}"
           flutter build apk --release "${DART_DEFINES[@]}"
@@ -71,7 +79,7 @@ jobs:
 
           This is a **debug-signed sideload APK** (not Play Store). Open the link on the phone, allow Install unknown apps for the browser/GitHub if Android asks, and choose Install anyway if Play Protect warns.
 
-          The APK talks to the Study Grove AI server (not packed-in model keys). For a phone off this Wi‑Fi, set GitHub secret STUDY_AI_PROXY_URL to a reachable HTTPS proxy.
+          The APK includes built-in Study AI. Don’t post this link publicly.
 
           Rebuild later: Actions → Android sideload APK → Run workflow.
 

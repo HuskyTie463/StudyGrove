@@ -47,10 +47,19 @@ class StudyAiSettings extends ChangeNotifier {
   static const _ttsPrefsKey = 'study_ai_openai_tts_key_fallback';
   static const _ttsCustomFlagKey = 'study_ai_using_custom_tts_key';
 
-  /// Where the app sends Study AI / TTS / realtime-session requests.
+  /// Optional hosted proxy. Loopback is ignored so store builds do not
+  /// try to call a server on the customer's phone.
   static const proxyUrl = String.fromEnvironment(
     'STUDY_AI_PROXY_URL',
-    defaultValue: 'http://127.0.0.1:8787',
+    defaultValue: '',
+  );
+
+  static const bundledStudyAiKey = String.fromEnvironment(
+    'BUNDLED_STUDY_AI_KEY',
+  );
+
+  static const bundledOpenAiTtsKey = String.fromEnvironment(
+    'BUNDLED_OPENAI_TTS_KEY',
   );
 
   static const _secure = FlutterSecureStorage(
@@ -68,20 +77,39 @@ class StudyAiSettings extends ChangeNotifier {
 
   bool get usingCustomTtsKey => _usingCustomTts;
 
-  bool get usesProxy => proxyUrl.trim().isNotEmpty && !_usingCustom;
+  static bool get proxyIsLoopback {
+    final raw = proxyUrl.trim();
+    if (raw.isEmpty) return true;
+    final host = (Uri.tryParse(raw)?.host ?? '').toLowerCase();
+    return host.isEmpty ||
+        host == '127.0.0.1' ||
+        host == 'localhost' ||
+        host == '::1' ||
+        host == '[::1]';
+  }
 
-  bool get usesSpeechProxy => proxyUrl.trim().isNotEmpty && !_usingCustomTts;
+  bool get usesProxy =>
+      proxyUrl.trim().isNotEmpty && !proxyIsLoopback && !_usingCustom;
 
-  /// True when Study AI can run (signed-in proxy, or a user-supplied key).
-  bool get hasKey => usesProxy || (_apiKey != null && _apiKey!.trim().isNotEmpty);
+  bool get usesSpeechProxy =>
+      proxyUrl.trim().isNotEmpty && !proxyIsLoopback && !_usingCustomTts;
 
-  /// Custom key only. Never a bundled/default secret.
+  String? get _bundledStudyKey {
+    final k = bundledStudyAiKey.trim();
+    return k.isEmpty ? null : k;
+  }
+
+  /// True when Study AI can run (hosted proxy, built-in key, or a custom key).
+  bool get hasKey =>
+      usesProxy || (apiKey != null && apiKey!.trim().isNotEmpty);
+
+  /// Custom key, else the built-in store key. Never shown in the UI.
   String? get apiKey {
     if (_usingCustom) {
       final k = _apiKey?.trim() ?? '';
       return k.isEmpty ? null : k;
     }
-    return null;
+    return _bundledStudyKey;
   }
 
   String? get openAiSpeechKey {
@@ -93,6 +121,10 @@ class StudyAiSettings extends ChangeNotifier {
         _isOpenAiKey(_apiKey)) {
       return _apiKey!.trim();
     }
+    if (_isOpenAiKey(bundledOpenAiTtsKey)) {
+      return bundledOpenAiTtsKey.trim();
+    }
+    if (_isOpenAiKey(_bundledStudyKey)) return _bundledStudyKey;
     return null;
   }
 

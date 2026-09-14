@@ -56,11 +56,11 @@ class StudyAiProxy {
           .timeout(timeout);
     } on SocketException {
       throw StudyAiException(
-        'Could not reach the Study AI server at $baseUrl. Start it on this computer (see server/README.md), or set STUDY_AI_PROXY_URL.',
+        'Could not reach Study AI. Check your connection and try again.',
       );
     } on HttpException {
       throw StudyAiException(
-        'Could not reach the Study AI server. Check the proxy is running.',
+        'Could not reach Study AI. Check your connection and try again.',
       );
     }
   }

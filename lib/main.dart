@@ -6,6 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'firebase_options.dart';
 import 'pages/auth_login_page.dart';
 import 'pages/app_shell.dart';
+import 'pages/licence_gate.dart';
+import 'services/ai_allowance_service.dart';
+import 'services/entitlement_service.dart';
 import 'services/study_ai_settings.dart';
 import 'theme/theme_controller.dart';
 
@@ -128,8 +131,17 @@ class _AuthGateState extends State<AuthGate> {
         }
         final user = snap.data;
         themeController.bindUser(user?.uid);
-        if (user == null) return const AuthLoginPage();
-        return const AppShell();
+        if (user == null) {
+          entitlementService.unbind();
+          aiAllowanceService.unbind();
+        } else {
+          entitlementService.bindUser(user.uid);
+          aiAllowanceService.bindUser(user.uid);
+        }
+        return LicenceGate(
+          uid: user?.uid,
+          child: user == null ? const AuthLoginPage() : const AppShell(),
+        );
       },
     );
   }

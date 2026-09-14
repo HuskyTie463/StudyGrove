@@ -358,11 +358,26 @@ class _PlannerPageState extends State<PlannerPage> {
                                           e.startMinutes,
                                           e.endMinutes,
                                         );
+                                        Color? subjectColor;
+                                        final sid = e.subjectId;
+                                        if (sid != null) {
+                                          for (final s in scope?.subjects ??
+                                              const <Subject>[]) {
+                                            if (s.id == sid) {
+                                              subjectColor = s.color;
+                                              break;
+                                            }
+                                          }
+                                        }
+                                        final color = e.resolvedColor(
+                                          subjectColor: subjectColor,
+                                          fallback: scheme.primary,
+                                        );
 
                                         return Container(
                                           padding: const EdgeInsets.all(12),
                                           decoration: BoxDecoration(
-                                            color: scheme.primary
+                                            color: color
                                                 .withValues(alpha: 0.18),
                                             borderRadius:
                                                 BorderRadius.circular(14),

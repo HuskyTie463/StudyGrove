@@ -12,7 +12,7 @@ extension ReadinessStateX on ReadinessState {
         ReadinessState.onTrack => 'On track',
         ReadinessState.needsAttention => 'Needs attention',
         ReadinessState.timeIsTight => 'Time is tight',
-        ReadinessState.missingInformation => 'Missing information',
+        ReadinessState.missingInformation => 'Getting ready',
       };
 }
 
@@ -191,9 +191,6 @@ class AssessmentReadinessEngine {
     }
     if (a.linkedTopicIds.isNotEmpty) {
       return 'Run a short active-recall on a linked topic';
-    }
-    if (a.estimatedPrepMinutes == null || a.weightPercent == null) {
-      return 'Fill in prep estimate and weight so planning can tighten';
     }
     if (evidence.state == ReadinessState.timeIsTight) {
       return 'Protect a focused block before the next commitment';

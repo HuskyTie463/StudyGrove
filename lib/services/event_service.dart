@@ -27,6 +27,7 @@ class EventService {
       endMinutes: data['endMinutes'] as int?,
       location: data['location'] as String?,
       subjectId: data['subjectId'] as String?,
+      colorValue: data['colorValue'] as int?,
     );
   }
 
@@ -42,6 +43,7 @@ class EventService {
       endMinutes: data['endMinutes'] as int?,
       location: data['location'] as String?,
       subjectId: data['subjectId'] as String?,
+      colorValue: data['colorValue'] as int?,
     );
   }
 
@@ -54,6 +56,7 @@ class EventService {
       endMinutes: r.endMinutes,
       location: r.location,
       subjectId: r.subjectId,
+      colorValue: r.colorValue,
       isRecurring: true,
     );
   }
@@ -256,6 +259,7 @@ class EventService {
     TimeOfDay? endTime,
     String? location,
     String? subjectId,
+    int? colorValue,
   }) async {
     final start = timeToMinutes(time);
     await _col.add({
@@ -265,6 +269,7 @@ class EventService {
       'endMinutes': resolveEndMinutes(start, endTime != null ? timeToMinutes(endTime) : null),
       'location': location,
       'subjectId': subjectId,
+      'colorValue': colorValue,
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
@@ -276,6 +281,7 @@ class EventService {
     TimeOfDay? endTime,
     String? location,
     String? subjectId,
+    int? colorValue,
   }) async {
     final start = timeToMinutes(time);
     await _recurringCol.add({
@@ -285,6 +291,7 @@ class EventService {
       'endMinutes': resolveEndMinutes(start, endTime != null ? timeToMinutes(endTime) : null),
       'location': location,
       'subjectId': subjectId,
+      'colorValue': colorValue,
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
@@ -337,6 +344,7 @@ class EventService {
     TimeOfDay? endTime,
     String? location,
     String? subjectId,
+    int? colorValue,
   }) async {
     final start = timeToMinutes(time);
     await _col.doc(id).update({
@@ -346,6 +354,7 @@ class EventService {
       'endMinutes': resolveEndMinutes(start, endTime != null ? timeToMinutes(endTime) : null),
       'location': location,
       'subjectId': subjectId,
+      'colorValue': colorValue,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -358,6 +367,7 @@ class EventService {
     TimeOfDay? endTime,
     String? location,
     String? subjectId,
+    int? colorValue,
   }) async {
     final start = timeToMinutes(time);
     await _recurringCol.doc(id).update({
@@ -367,6 +377,7 @@ class EventService {
       'endMinutes': resolveEndMinutes(start, endTime != null ? timeToMinutes(endTime) : null),
       'location': location,
       'subjectId': subjectId,
+      'colorValue': colorValue,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -379,6 +390,7 @@ class EventService {
     TimeOfDay? endTime,
     String? location,
     String? subjectId,
+    int? colorValue,
   }) async {
     if (event.isRecurring || event.id.startsWith('recur_')) {
       final rawId =
@@ -391,6 +403,7 @@ class EventService {
         endTime: endTime,
         location: location,
         subjectId: subjectId,
+        colorValue: colorValue,
       );
     } else {
       await updateEvent(
@@ -401,6 +414,7 @@ class EventService {
         endTime: endTime,
         location: location,
         subjectId: subjectId,
+        colorValue: colorValue,
       );
     }
   }

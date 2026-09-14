@@ -20,62 +20,157 @@ class LectureLabService {
       _db.collection('users').doc(uid).collection('review_topics');
 
   Stream<List<LectureNote>> streamLectures() {
-    return _lectures.orderBy('createdAt', descending: true).snapshots().map((s) {
-      return s.docs.map((d) {
+    return _lectures.snapshots().map((s) {
+      final rows = <({DateTime created, LectureNote note})>[];
+      for (final d in s.docs) {
         final data = d.data();
-        return LectureNote(
-          id: d.id,
-          title: (data['title'] as String?) ?? 'Lecture',
-          body: (data['body'] as String?) ?? '',
-          course: data['course'] as String?,
-          subjectId: data['subjectId'] as String?,
-          lectureDate: (data['lectureDate'] as Timestamp?)?.toDate(),
-          topicIds: ((data['topicIds'] as List?) ?? const [])
-              .map((e) => e.toString())
-              .toList(),
-          assessmentIds: ((data['assessmentIds'] as List?) ?? const [])
-              .map((e) => e.toString())
-              .toList(),
-          learningObjectives:
-              ((data['learningObjectives'] as List?) ?? const [])
-                  .map((e) => e.toString())
-                  .where((e) => e.trim().isNotEmpty)
-                  .toList(),
-        );
-      }).toList();
+        rows.add((
+          created: _asDate(data['createdAt']) ??
+              _asDate(data['lectureDate']) ??
+              DateTime.fromMillisecondsSinceEpoch(0),
+          note: lectureFromDoc(d.id, data),
+        ));
+      }
+      rows.sort((a, b) => b.created.compareTo(a.created));
+      return rows.map((e) => e.note).toList();
     });
+  }
+
+  Future<LectureNote?> getLecture(String id) async {
+    final snap = await _lectures.doc(id).get();
+    final data = snap.data();
+    if (!snap.exists || data == null) return null;
+    return lectureFromDoc(id, data);
+  }
+
+  static String? _asString(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    return value.toString();
+  }
+
+  static DateTime? _asDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return null;
+  }
+
+  static List<dynamic> _asList(dynamic value) {
+    if (value is List) return value;
+    return const [];
+  }
+
+  static List<String> _asStringList(dynamic value) {
+    return _asList(value)
+        .map((e) => e.toString())
+        .where((e) => e.trim().isNotEmpty)
+        .toList();
+  }
+
+  static LectureNote lectureFromDoc(String id, Map<String, dynamic> data) {
+    final keyIdeas = <LectureKeyIdea>[];
+    for (final item in _asList(data['keyIdeas'])) {
+      final idea = LectureKeyIdea.tryParse(item);
+      if (idea != null) keyIdeas.add(idea);
+    }
+    final tables = <LectureTable>[];
+    for (final item in _asList(data['tables'])) {
+      final table = LectureTable.tryParse(item);
+      if (table != null) tables.add(table);
+    }
+    final body = _asString(data['body']) ?? '';
+    if (tables.isEmpty) {
+      tables.addAll(parseMarkdownTables(body));
+    }
+    final summary = _asString(data['summary'])?.trim();
+    return LectureNote(
+      id: id,
+      title: (_asString(data['title']) ?? '').trim().isEmpty
+          ? 'Lecture'
+          : _asString(data['title'])!.trim(),
+      body: body,
+      course: _asString(data['course']),
+      subjectId: _asString(data['subjectId']),
+      lectureDate: _asDate(data['lectureDate']),
+      topicIds: _asStringList(data['topicIds']),
+      assessmentIds: _asStringList(data['assessmentIds']),
+      learningObjectives: _asStringList(data['learningObjectives']),
+      summary: (summary == null || summary.isEmpty) ? null : summary,
+      keyIdeas: keyIdeas,
+      tables: tables,
+    );
+  }
+
+  static List<LectureTable> parseMarkdownTables(String body) {
+    List<String> splitRow(String line) {
+      var s = line.trim();
+      if (s.startsWith('|')) s = s.substring(1);
+      if (s.endsWith('|')) s = s.substring(0, s.length - 1);
+      return s.split('|').map((c) => c.trim()).toList();
+    }
+
+    bool isSeparator(String line) {
+      if (!line.contains('|') && !line.contains('-')) return false;
+      final cells = splitRow(line);
+      if (cells.isEmpty) return false;
+      return cells.every((c) => RegExp(r'^:?-{2,}:?$').hasMatch(c));
+    }
+
+    final lines = body.split(RegExp(r'\r?\n'));
+    final out = <LectureTable>[];
+    for (var i = 0; i < lines.length - 1; i++) {
+      if (!lines[i].contains('|') || !isSeparator(lines[i + 1])) continue;
+      final headers = splitRow(lines[i]);
+      if (headers.where((h) => h.isNotEmpty).isEmpty) continue;
+      final rows = <List<String>>[];
+      var j = i + 2;
+      while (j < lines.length && lines[j].contains('|')) {
+        if (isSeparator(lines[j])) {
+          j++;
+          continue;
+        }
+        final row = splitRow(lines[j]);
+        if (row.any((c) => c.isNotEmpty)) rows.add(row);
+        j++;
+      }
+      if (rows.isEmpty) continue;
+      out.add(LectureTable(headers: headers, rows: rows));
+      i = j - 1;
+    }
+    return out;
   }
 
   Stream<List<ReviewTopic>> streamTopics() {
     return _topics.snapshots().map((s) {
       return s.docs.map((d) {
         final data = d.data();
-        final rawQs = (data['questions'] as List?) ?? const [];
-        final qs = rawQs.map((x) {
-          final m = Map<String, dynamic>.from(x as Map);
-          return RecallQuestion(
-            id: (m['id'] as String?) ?? '',
-            prompt: (m['prompt'] as String?) ?? '',
-            answer: m['answer'] as String?,
-            sourceExcerpt: m['sourceExcerpt'] as String?,
-            unsupported: (m['unsupported'] as bool?) ?? false,
+        final qs = <RecallQuestion>[];
+        for (final x in _asList(data['questions'])) {
+          if (x is! Map) continue;
+          final m = Map<String, dynamic>.from(x);
+          qs.add(
+            RecallQuestion(
+              id: _asString(m['id']) ?? '',
+              prompt: _asString(m['prompt']) ?? '',
+              answer: _asString(m['answer']),
+              sourceExcerpt: _asString(m['sourceExcerpt']),
+              unsupported: m['unsupported'] == true,
+            ),
           );
-        }).toList();
+        }
         return ReviewTopic(
           id: d.id,
-          title: (data['title'] as String?) ?? '',
-          course: data['course'] as String?,
-          subjectId: data['subjectId'] as String?,
-          assessmentIds: ((data['assessmentIds'] as List?) ?? const [])
-              .map((e) => e.toString())
-              .toList(),
+          title: _asString(data['title']) ?? '',
+          course: _asString(data['course']),
+          subjectId: _asString(data['subjectId']),
+          assessmentIds: _asStringList(data['assessmentIds']),
           confidence: (data['confidence'] as num?)?.toDouble(),
-          lastReviewedAt: (data['lastReviewedAt'] as Timestamp?)?.toDate(),
-          nextReviewAt: (data['nextReviewAt'] as Timestamp?)?.toDate(),
+          lastReviewedAt: _asDate(data['lastReviewedAt']),
+          nextReviewAt: _asDate(data['nextReviewAt']),
           stabilityDays: (data['stabilityDays'] as num?)?.toDouble(),
-          sourceLectureId: data['sourceLectureId'] as String?,
+          sourceLectureId: _asString(data['sourceLectureId']),
           questions: qs,
-          learningObjective: data['learningObjective'] as String?,
+          learningObjective: _asString(data['learningObjective']),
         );
       }).toList();
     });
@@ -207,6 +302,9 @@ class LectureLabService {
     List<({String title, String? objective, List<RecallQuestion> questions})>
         aligned;
     var usedAi = false;
+    String? summary;
+    var keyIdeas = <LectureKeyIdea>[];
+    var tables = <LectureTable>[];
     if (studyAiSettings.hasKey) {
       try {
         final extracted = await StudyAiClient.instance.extractLecture(
@@ -216,7 +314,7 @@ class LectureLabService {
           pdfBytes: pdfBytes,
           pdfFilename: pdfFilename,
         );
-        aligned = extracted
+        aligned = extracted.topics
             .map(
               (e) => (
                 title: e.title,
@@ -225,6 +323,9 @@ class LectureLabService {
               ),
             )
             .toList();
+        summary = extracted.summary;
+        keyIdeas = extracted.keyIdeas;
+        tables = extracted.tables;
         usedAi = true;
       } catch (_) {
         if (storedBody.isEmpty) rethrow;
@@ -276,6 +377,20 @@ class LectureLabService {
       topicIds.add(ref.id);
     }
 
+    if (tables.isEmpty) {
+      tables = parseMarkdownTables(storedBody);
+    }
+    if (keyIdeas.isEmpty) {
+      keyIdeas = aligned
+          .map((e) => LectureKeyIdea(title: e.title))
+          .toList();
+    }
+    if ((summary ?? '').trim().isEmpty && aligned.isNotEmpty) {
+      summary =
+          'This lecture covers ${aligned.map((e) => e.title).take(8).join(', ')}'
+          '${aligned.length > 8 ? '…' : ''}.';
+    }
+
     final doc = await _lectures.add({
       'title': title,
       'body': storedBody,
@@ -287,6 +402,9 @@ class LectureLabService {
       'assessmentIds': assessmentIds,
       'learningObjectives': learningObjectives,
       'extractedWithAi': usedAi,
+      if (summary != null && summary.trim().isNotEmpty) 'summary': summary,
+      'keyIdeas': keyIdeas.map((e) => e.toMap()).toList(),
+      'tables': tables.map((e) => e.toMap()).toList(),
       'createdAt': FieldValue.serverTimestamp(),
     });
 
@@ -295,6 +413,22 @@ class LectureLabService {
     }
 
     return doc.id;
+  }
+
+  Future<void> linkAssessment(String lectureId, String assessmentId) async {
+    if (lectureId.trim().isEmpty || assessmentId.trim().isEmpty) return;
+    await _lectures.doc(lectureId).set({
+      'assessmentIds': FieldValue.arrayUnion([assessmentId]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> unlinkAssessment(String lectureId, String assessmentId) async {
+    if (lectureId.trim().isEmpty || assessmentId.trim().isEmpty) return;
+    await _lectures.doc(lectureId).set({
+      'assessmentIds': FieldValue.arrayRemove([assessmentId]),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<void> scheduleReview(String topicId, DateTime when) async {

@@ -123,6 +123,7 @@ class _OrbPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final energy = this.energy.isFinite ? this.energy.clamp(0.0, 1.0) : 0.0;
     final center = Offset(size.width / 2, size.height / 2);
     final base = size.shortestSide * 0.28;
     final breathe = 1 + 0.045 * math.sin(time * 1.15);
@@ -148,7 +149,7 @@ class _OrbPainter extends CustomPainter {
 
     final glow = Paint()
       ..color = (mood == VoiceOrbMood.error ? muted : primary)
-          .withValues(alpha: 0.18 + energy * 0.22)
+          .withValues(alpha: (0.18 + energy * 0.22).clamp(0.0, 1.0))
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 28);
     canvas.drawCircle(center, core * (1.55 + energy * 0.35), glow);
 

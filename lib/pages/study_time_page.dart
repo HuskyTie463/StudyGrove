@@ -2,13 +2,14 @@ import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/models.dart';
 import '../services/study_time_service.dart';
 import '../services/subject_service.dart';
+import '../theme/design_tokens.dart';
 import '../ui/sg_primitives.dart';
 import '../ui/shared_ui.dart';
-import '../ui/shell_scope.dart';
 import '../utils/datetime_utils.dart';
 
 class StudyTimePage extends StatelessWidget {
@@ -29,7 +30,7 @@ class StudyTimePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
         child: StreamBuilder<List<Subject>>(
           stream: subjectService.streamSubjects(),
           builder: (context, subSnap) {
@@ -51,6 +52,7 @@ class StudyTimePage extends StatelessWidget {
                       totals: totals,
                       subjectService: subjectService,
                       studyTimeService: studyTimeService,
+                      focusSubjectId: focusSubjectId,
                     );
                   },
                 );
@@ -75,6 +77,7 @@ class _StudyTimeBody extends StatefulWidget {
     required this.totals,
     required this.subjectService,
     required this.studyTimeService,
+    this.focusSubjectId,
   });
 
   final double panelOpacity;
@@ -83,6 +86,7 @@ class _StudyTimeBody extends StatefulWidget {
   final List<StudyDayTotal> totals;
   final SubjectService subjectService;
   final StudyTimeService studyTimeService;
+  final String? focusSubjectId;
 
   @override
   State<_StudyTimeBody> createState() => _StudyTimeBodyState();
@@ -144,92 +148,87 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
       );
     }
 
+    final laneToggle = SgSegmented<_TimeLane>(
+      selected: _lane,
+      onChanged: (v) => setState(() => _lane = v),
+      segments: const [
+        ButtonSegment(
+          value: _TimeLane.subjects,
+          label: Text('Subjects'),
+        ),
+        ButtonSegment(
+          value: _TimeLane.hobbies,
+          label: Text('Hobbies'),
+        ),
+      ],
+    );
+    final overviewToggle = SgSegmented<_TimeOverview>(
+      selected: _overview,
+      onChanged: (v) => setState(() => _overview = v),
+      segments: const [
+        ButtonSegment(
+          value: _TimeOverview.graph,
+          label: Text('Graph'),
+        ),
+        ButtonSegment(
+          value: _TimeOverview.rings,
+          label: Text('Rings'),
+        ),
+      ],
+    );
+    final goalButton = _overview == _TimeOverview.rings
+        ? TextButton(
+            onPressed: () => _changeGoal(
+              context,
+              studyTimeService,
+              focusSubject,
+              laneAll,
+            ),
+            child: const Text('Goal'),
+          )
+        : null;
+    final hobbyAdd = hobbiesLane
+        ? IconButton(
+            tooltip: 'Add hobby',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _addHobby(context),
+            icon: const Icon(Icons.add, size: 20),
+          )
+        : null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: SgSegmented<_TimeLane>(
-                selected: _lane,
-                onChanged: (v) => setState(() => _lane = v),
-                segments: [
-                  ButtonSegment(
-                    value: _TimeLane.subjects,
-                    label: Text(compact ? 'Subjects' : 'Time for subjects'),
-                    icon: compact
-                        ? null
-                        : const Icon(Icons.menu_book_outlined, size: 18),
-                  ),
-                  ButtonSegment(
-                    value: _TimeLane.hobbies,
-                    label: Text(compact ? 'Hobbies' : 'For hobbies'),
-                    icon: compact
-                        ? null
-                        : const Icon(Icons.interests_outlined, size: 18),
-                  ),
+        compact
+            ? Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  laneToggle,
+                  if (hobbyAdd != null) hobbyAdd,
+                  overviewToggle,
+                  if (goalButton != null) goalButton,
+                ],
+              )
+            : Row(
+                children: [
+                  laneToggle,
+                  if (hobbyAdd != null) hobbyAdd,
+                  const Spacer(),
+                  overviewToggle,
+                  if (goalButton != null) goalButton,
                 ],
               ),
-            ),
-            if (hobbiesLane)
-              IconButton(
-                tooltip: 'Add hobby',
-                onPressed: () => _addHobby(context),
-                icon: const Icon(Icons.add_circle_outline),
-              ),
-          ],
-        ),
         const SizedBox(height: 10),
-        _SubjectFilter(
-          allSubjects: laneAll,
-          allLabel: hobbiesLane ? 'All hobbies' : 'All subjects',
+        _LiveStudyRow(
+          subjects: laneAll,
+          allSubjects: widget.allSubjects,
+          studyTimeService: studyTimeService,
+          hobbiesLane: hobbiesLane,
+          chromeSubjectId: widget.focusSubjectId,
         ),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: SgSegmented<_TimeOverview>(
-                selected: _overview,
-                onChanged: (v) => setState(() => _overview = v),
-                segments: const [
-                  ButtonSegment(
-                    value: _TimeOverview.graph,
-                    label: Text('Graph'),
-                    icon: Icon(Icons.bar_chart_rounded, size: 18),
-                  ),
-                  ButtonSegment(
-                    value: _TimeOverview.rings,
-                    label: Text('Rings'),
-                    icon: Icon(Icons.donut_large_outlined, size: 18),
-                  ),
-                ],
-              ),
-            ),
-            if (_overview == _TimeOverview.rings) ...[
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: () => _changeGoal(
-                  context,
-                  studyTimeService,
-                  focusSubject,
-                  laneAll,
-                ),
-                child: Text(compact ? 'Goal' : 'Change goal'),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 12),
-        FrostPanel(
-          opacity: widget.panelOpacity,
-          child: _LiveStudyRow(
-            subjects: laneAll,
-            allSubjects: widget.allSubjects,
-            studyTimeService: studyTimeService,
-            hobbiesLane: hobbiesLane,
-          ),
-        ),
-        const SizedBox(height: 14),
         Expanded(
           child: FrostPanel(
             opacity: widget.panelOpacity,
@@ -484,19 +483,18 @@ class _WeekSubjectChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final groups = <BarChartGroupData>[];
-    var maxTotal = 0;
+    var maxHours = 0.0;
     for (var i = 0; i < days.length; i++) {
       final key = dayKey(days[i]);
       var cursor = 0.0;
       final stacks = <BarChartRodStackItem>[];
       for (final s in subjects) {
-        final m = minutesOn(s.id, key).toDouble();
-        if (m <= 0) continue;
-        stacks.add(BarChartRodStackItem(cursor, cursor + m, s.color));
-        cursor += m;
+        final h = studyMinutesToHours(minutesOn(s.id, key));
+        if (h <= 0) continue;
+        stacks.add(BarChartRodStackItem(cursor, cursor + h, s.color));
+        cursor += h;
       }
-      final total = cursor.round();
-      if (total > maxTotal) maxTotal = total;
+      if (cursor > maxHours) maxHours = cursor;
       groups.add(
         BarChartGroupData(
           x: i,
@@ -514,7 +512,8 @@ class _WeekSubjectChart extends StatelessWidget {
         ),
       );
     }
-    final maxY = (maxTotal + 10).clamp(30, 24 * 60).toDouble();
+    final maxY = studyTimeChartMaxHours(maxHours);
+    final hourStep = studyTimeChartHourInterval(maxY);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -522,34 +521,25 @@ class _WeekSubjectChart extends StatelessWidget {
         Expanded(
           child: BarChart(
             BarChartData(
+              minY: 0,
               maxY: maxY,
               gridData: FlGridData(
                 show: true,
                 drawVerticalLine: false,
+                horizontalInterval: hourStep,
                 getDrawingHorizontalLine: (v) => FlLine(
                   color: scheme.outline.withValues(alpha: 0.18),
                   strokeWidth: 1,
                 ),
               ),
               borderData: FlBorderData(show: false),
+              barTouchData: _hoursBarTouchData(scheme),
               titlesData: FlTitlesData(
                 topTitles:
                     const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 rightTitles:
                     const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 36,
-                    getTitlesWidget: (v, _) => Text(
-                      v.toInt().toString(),
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: scheme.onSurface.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ),
-                ),
+                leftTitles: _hoursLeftTitles(scheme, hourStep),
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
@@ -674,9 +664,7 @@ class _SubjectHourCircle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final progress = targetMinutes <= 0
-        ? 0.0
-        : (minutes / targetMinutes).clamp(0.0, 1.0);
+    final progress = studyGoalRatio(minutes, targetMinutes);
     final goalHours = (targetMinutes / 60).round();
     final ringSize = (size - 36).clamp(120.0, 240.0);
     return InkWell(
@@ -759,17 +747,20 @@ class _FillCirclePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..color = track;
     canvas.drawCircle(c, r, trackPaint);
-    if (progress > 0) {
+    final sweeps = studyRingLapSweeps(progress);
+    for (var i = 0; i < sweeps.length; i++) {
+      final sweep = sweeps[i];
+      if (sweep <= 0) continue;
       canvas.drawArc(
         rect,
         -math.pi / 2,
-        2 * math.pi * progress,
+        2 * math.pi * sweep,
         false,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = stroke
           ..strokeCap = StrokeCap.round
-          ..color = color,
+          ..color = studyRingLapColor(color, i),
       );
     }
     canvas.drawCircle(
@@ -784,49 +775,10 @@ class _FillCirclePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _FillCirclePainter old) =>
-      old.progress != progress || old.color != color;
-}
-
-class _SubjectFilter extends StatelessWidget {
-  const _SubjectFilter({
-    required this.allSubjects,
-    this.allLabel = 'All subjects',
-  });
-
-  final List<Subject> allSubjects;
-  final String allLabel;
-
-  static const _allValue = '__all__';
-
-  @override
-  Widget build(BuildContext context) {
-    final scope = ShellScope.of(context);
-    final current = scope.subjectId;
-    final value = (current != null && allSubjects.any((s) => s.id == current))
-        ? current
-        : _allValue;
-    return DropdownButtonFormField<String>(
-      key: ValueKey('$allLabel-$value'),
-      initialValue: value,
-      isExpanded: true,
-      decoration: InputDecoration(
-        labelText: allLabel == 'All hobbies' ? 'Hobby' : 'Subject',
-        isDense: true,
-      ),
-      items: [
-        DropdownMenuItem(value: _allValue, child: Text(allLabel)),
-        for (final s in allSubjects)
-          DropdownMenuItem(value: s.id, child: Text(s.label)),
-      ],
-      onChanged: (id) {
-        if (id == null || id == _allValue) {
-          scope.setSubjectId(null);
-        } else {
-          scope.setSubjectId(id);
-        }
-      },
-    );
-  }
+      old.progress != progress ||
+      old.color != color ||
+      old.track != track ||
+      old.ring != ring;
 }
 
 class _LiveStudyRow extends StatefulWidget {
@@ -835,112 +787,118 @@ class _LiveStudyRow extends StatefulWidget {
     required this.allSubjects,
     required this.studyTimeService,
     required this.hobbiesLane,
+    this.chromeSubjectId,
   });
 
   final List<Subject> subjects;
   final List<Subject> allSubjects;
   final StudyTimeService studyTimeService;
   final bool hobbiesLane;
+  final String? chromeSubjectId;
 
   @override
   State<_LiveStudyRow> createState() => _LiveStudyRowState();
 }
 
 class _LiveStudyRowState extends State<_LiveStudyRow> {
+  String? _sessionSubjectId;
+
+  bool _inLane(String? id) =>
+      id != null && widget.subjects.any((s) => s.id == id);
+
+  String? get _chromeInLane =>
+      _inLane(widget.chromeSubjectId) ? widget.chromeSubjectId : null;
+
+  String? get _pickedSubjectId {
+    if (_chromeInLane != null) return _chromeInLane;
+    if (_inLane(_sessionSubjectId)) return _sessionSubjectId;
+    if (widget.subjects.length == 1) return widget.subjects.first.id;
+    return null;
+  }
+
+  Subject? _named(String? id) {
+    if (id == null) return null;
+    for (final s in widget.allSubjects) {
+      if (s.id == id) return s;
+    }
+    for (final s in widget.subjects) {
+      if (s.id == id) return s;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    final scheme = Theme.of(context).colorScheme;
     final subjects = widget.subjects;
     final studyTimeService = widget.studyTimeService;
     final live = studyTimeService.isLive;
     final elapsed = studyTimeService.liveElapsed;
     final mm = elapsed.inMinutes.toString().padLeft(2, '0');
     final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
-    final focusId = ShellScope.maybeOf(context)?.subjectId;
     final liveId = studyTimeService.activeSubjectId;
-    Subject? liveSubject;
-    if (liveId != null) {
-      for (final s in widget.allSubjects) {
-        if (s.id == liveId) {
-          liveSubject = s;
-          break;
-        }
-      }
-    }
-    final running = liveSubject;
-    final dropdownSubjects = [
-      ...subjects,
-      if (running != null && !subjects.any((s) => s.id == running.id)) running,
-    ];
-    final selectedId = live
-        ? liveId
-        : (focusId != null && subjects.any((s) => s.id == focusId)
-            ? focusId
-            : null);
-    final dropdownValue = (selectedId != null &&
-            dropdownSubjects.any((s) => s.id == selectedId))
-        ? selectedId
-        : '__all__';
-    final allLabel = widget.hobbiesLane ? 'All hobbies' : 'All subjects';
-    final itemLabel = widget.hobbiesLane ? 'Hobby' : 'Subject';
+    final running = _named(liveId);
+    final selectedId = live ? liveId : _pickedSubjectId;
+    final showPicker = !live && _chromeInLane == null && subjects.length > 1;
+    final labelSubject = live ? running : _named(selectedId);
+    final itemHint = widget.hobbiesLane ? 'Hobby' : 'Subject';
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Text(
-          widget.hobbiesLane ? 'Hobby now' : 'Studying now',
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-        ),
-        const SizedBox(height: 10),
-        if (dropdownSubjects.isEmpty)
-          Text(
-            widget.hobbiesLane
-                ? 'Add a hobby to start a timer.'
-                : 'Add a subject to start a timer.',
-          )
-        else
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  key: ValueKey('$allLabel-$dropdownValue'),
-                  initialValue: dropdownValue,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: itemLabel,
-                    isDense: true,
+        Expanded(
+          child: subjects.isEmpty
+              ? Text(
+                  widget.hobbiesLane
+                      ? 'Add a hobby to start a timer.'
+                      : 'Add a subject to start a timer.',
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.72),
                   ),
-                  items: [
-                    DropdownMenuItem(
-                      value: '__all__',
-                      child: Text(allLabel),
+                )
+              : showPicker
+                  ? DropdownButtonFormField<String>(
+                      key: ValueKey('timer-$selectedId'),
+                      initialValue: selectedId,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        hintText: itemHint,
+                        isDense: true,
+                        border: UnderlineInputBorder(
+                          borderSide: BorderSide(
+                            color: scheme.outline.withValues(alpha: 0.28),
+                          ),
+                        ),
+                      ),
+                      items: [
+                        for (final s in subjects)
+                          DropdownMenuItem(value: s.id, child: Text(s.label)),
+                      ],
+                      onChanged: (id) => setState(() => _sessionSubjectId = id),
+                    )
+                  : Text(
+                      labelSubject?.label ?? itemHint,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurface.withValues(alpha: 0.78),
+                      ),
                     ),
-                    for (final s in dropdownSubjects)
-                      DropdownMenuItem(value: s.id, child: Text(s.label)),
-                  ],
-                  onChanged: live
-                      ? null
-                      : (id) {
-                          final scope = ShellScope.maybeOf(context);
-                          if (id == null || id == '__all__') {
-                            scope?.setSubjectId(null);
-                          } else {
-                            scope?.setSubjectId(id);
-                          }
-                        },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                '$mm:$ss',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(width: 12),
-              FilledButton(
-                onPressed: () async {
+        ),
+        Text(
+          '$mm:$ss',
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(width: 10),
+        FilledButton(
+          onPressed: subjects.isEmpty
+              ? null
+              : () async {
                   if (live) {
                     await studyTimeService.stopLive();
                     return;
@@ -960,17 +918,204 @@ class _LiveStudyRowState extends State<_LiveStudyRow> {
                   }
                   await studyTimeService.startLive(id);
                 },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(live ? Icons.stop : Icons.play_arrow, size: 20),
-                    const SizedBox(width: 6),
-                    Text(live ? 'Stop' : 'Start'),
-                  ],
+          style: live
+              ? FilledButton.styleFrom(
+                  backgroundColor: t.urgent,
+                  foregroundColor: _onSoftStop(t.urgent),
+                )
+              : null,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(live ? Icons.stop : Icons.play_arrow, size: 20),
+              const SizedBox(width: 6),
+              Text(live ? 'Stop' : 'Start'),
+            ],
+          ),
+        ),
+        const SizedBox(width: 4),
+        TextButton(
+          onPressed: subjects.isEmpty ? null : _addManualTime,
+          child: const Text('Add time'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _addManualTime() async {
+    final logged = await showDialog<(String, int)?>(
+      context: context,
+      builder: (ctx) => AddManualTimeDialog(
+        subjects: widget.subjects,
+        initialSubjectId: _pickedSubjectId,
+        hobbiesLane: widget.hobbiesLane,
+      ),
+    );
+    if (!mounted || logged == null) return;
+    await widget.studyTimeService.addMinutes(
+      subjectId: logged.$1,
+      minutes: logged.$2,
+      source: 'manual',
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Added ${formatStudyMinutes(logged.$2)}.'),
+      ),
+    );
+  }
+}
+
+Color _onSoftStop(Color bg) {
+  return bg.computeLuminance() > 0.45
+      ? const Color(0xFF2A1612)
+      : Colors.white;
+}
+
+class AddManualTimeDialog extends StatefulWidget {
+  const AddManualTimeDialog({
+    super.key,
+    required this.subjects,
+    this.initialSubjectId,
+    this.hobbiesLane = false,
+  });
+
+  final List<Subject> subjects;
+  final String? initialSubjectId;
+  final bool hobbiesLane;
+
+  @override
+  State<AddManualTimeDialog> createState() => _AddManualTimeDialogState();
+}
+
+class _AddManualTimeDialogState extends State<AddManualTimeDialog> {
+  late final TextEditingController _hoursCtrl;
+  late final TextEditingController _minsCtrl;
+  String? _subjectId;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _hoursCtrl = TextEditingController(text: '0');
+    _minsCtrl = TextEditingController(text: '30');
+    final initial = widget.initialSubjectId;
+    if (initial != null && widget.subjects.any((s) => s.id == initial)) {
+      _subjectId = initial;
+    } else if (widget.subjects.length == 1) {
+      _subjectId = widget.subjects.first.id;
+    }
+  }
+
+  @override
+  void dispose() {
+    _hoursCtrl.dispose();
+    _minsCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final hours = int.tryParse(_hoursCtrl.text.trim()) ?? -1;
+    final minutes = int.tryParse(_minsCtrl.text.trim()) ?? -1;
+    final total = parseManualStudyMinutes(hours: hours, minutes: minutes);
+    final id = _subjectId;
+    if (id == null || id.isEmpty) {
+      setState(() {
+        _error = widget.hobbiesLane
+            ? 'Pick a hobby for this time.'
+            : 'Pick a subject for this time.';
+      });
+      return;
+    }
+    if (total == null) {
+      setState(() => _error = 'Enter at least 1 minute.');
+      return;
+    }
+    Navigator.pop(context, (id, total));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final itemLabel = widget.hobbiesLane ? 'Hobby' : 'Subject';
+    return AlertDialog(
+      title: const Text('Add time'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue: _subjectId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: itemLabel,
+              ),
+              items: [
+                for (final s in widget.subjects)
+                  DropdownMenuItem(value: s.id, child: Text(s.label)),
+              ],
+              onChanged: (id) => setState(() {
+                _subjectId = id;
+                _error = null;
+              }),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const Key('manual_hours'),
+                    controller: _hoursCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(
+                      labelText: 'Hours',
+                    ),
+                    onChanged: (_) {
+                      if (_error != null) setState(() => _error = null);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    key: const Key('manual_minutes'),
+                    controller: _minsCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(
+                      labelText: 'Minutes',
+                    ),
+                    onChanged: (_) {
+                      if (_error != null) setState(() => _error = null);
+                    },
+                    onSubmitted: (_) => _submit(),
+                  ),
+                ),
+              ],
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.78),
                 ),
               ),
             ],
-          ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Add'),
+        ),
       ],
     );
   }
@@ -1037,7 +1182,7 @@ class StudyTimeSubjectPage extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Minutes over the last 7 days.',
+            'Hours over the last 7 days.',
             style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.7)),
           ),
           const SizedBox(height: 12),
@@ -1060,7 +1205,7 @@ class StudyTimeSubjectPage extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Minutes over the last 8 weeks.',
+            'Hours over the last 8 weeks.',
             style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.7)),
           ),
           const SizedBox(height: 12),
@@ -1094,38 +1239,35 @@ class _MinutesChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final maxY = (values.fold<int>(0, (a, b) => a > b ? a : b) + 10)
-        .clamp(15, 24 * 60)
-        .toDouble();
+    var maxHours = 0.0;
+    final hourValues = <double>[
+      for (final minutes in values) studyMinutesToHours(minutes),
+    ];
+    for (final h in hourValues) {
+      if (h > maxHours) maxHours = h;
+    }
+    final maxY = studyTimeChartMaxHours(maxHours, cap: 80);
+    final hourStep = studyTimeChartHourInterval(maxY);
     return BarChart(
       BarChartData(
+        minY: 0,
         maxY: maxY,
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
+          horizontalInterval: hourStep,
           getDrawingHorizontalLine: (v) => FlLine(
             color: scheme.outline.withValues(alpha: 0.18),
             strokeWidth: 1,
           ),
         ),
         borderData: FlBorderData(show: false),
+        barTouchData: _hoursBarTouchData(scheme),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           rightTitles:
               const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 36,
-              getTitlesWidget: (v, _) => Text(
-                v.toInt().toString(),
-                style: TextStyle(
-                  fontSize: 10,
-                  color: scheme.onSurface.withValues(alpha: 0.7),
-                ),
-              ),
-            ),
-          ),
+          leftTitles: _hoursLeftTitles(scheme, hourStep),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
@@ -1147,12 +1289,12 @@ class _MinutesChart extends StatelessWidget {
           ),
         ),
         barGroups: [
-          for (var i = 0; i < values.length; i++)
+          for (var i = 0; i < hourValues.length; i++)
             BarChartGroupData(
               x: i,
               barRods: [
                 BarChartRodData(
-                  toY: values[i].toDouble(),
+                  toY: hourValues[i],
                   width: 14,
                   borderRadius: BorderRadius.circular(6),
                   color: color,
@@ -1163,6 +1305,44 @@ class _MinutesChart extends StatelessWidget {
       ),
     );
   }
+}
+
+AxisTitles _hoursLeftTitles(ColorScheme scheme, double interval) {
+  return AxisTitles(
+    sideTitles: SideTitles(
+      showTitles: true,
+      reservedSize: 40,
+      interval: interval,
+      getTitlesWidget: (v, _) {
+        if (v < -0.001) return const SizedBox.shrink();
+        return Text(
+          formatStudyChartHours(v),
+          style: TextStyle(
+            fontSize: 10,
+            color: scheme.onSurface.withValues(alpha: 0.7),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+BarTouchData _hoursBarTouchData(ColorScheme scheme) {
+  return BarTouchData(
+    touchTooltipData: BarTouchTooltipData(
+      getTooltipColor: (_) => scheme.surface.withValues(alpha: 0.94),
+      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+        return BarTooltipItem(
+          formatStudyChartHours(rod.toY),
+          TextStyle(
+            color: scheme.onSurface,
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
+        );
+      },
+    ),
+  );
 }
 
 DateTime _mondayOf(DateTime d) {

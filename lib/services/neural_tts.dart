@@ -160,7 +160,7 @@ class NeuralTts {
   }) async {
     if (!studyAiSettings.hasOpenAiSpeech) {
       throw NeuralTtsException(
-        'Listen voices need the Study AI server running, or a custom OpenAI key in Settings.',
+        'Listen voices need a built-in OpenAI key in this build, or a custom OpenAI key in Settings.',
       );
     }
     final key = studyAiSettings.openAiSpeechKey;
@@ -288,7 +288,7 @@ class NeuralTts {
       final k = key?.trim() ?? '';
       if (k.isEmpty) {
         throw NeuralTtsException(
-          'Listen voices need the Study AI server running, or a custom OpenAI key in Settings.',
+          'Listen voices need a built-in OpenAI key in this build, or a custom OpenAI key in Settings.',
         );
       }
       res = await http

@@ -152,3 +152,49 @@ Only do this once a Mac build is on TestFlight.
 Then **App Store TestFlight** → **Run workflow** → set **platform** to `ios`.
 
 When that job is green: TestFlight → **iOS** → Internal testing. Friend installs TestFlight on iPhone and installs Study Grove.
+
+---
+
+## 8. In-app purchases (Pro)
+
+Create these subscriptions on the **same** app (`com.adaracurry.studygrove`). Product IDs must match the app.
+
+| Product ID | Type | Price | Duration |
+|---|---|---|---|
+| `pro_monthly` | Auto-renewable / Play subscription | USD 4.99 | 1 month |
+| `pro_annual` | Auto-renewable / Play subscription | USD 39.99 | 1 year |
+
+**App Store Connect:** Subscriptions group (e.g. Study Grove Pro) → both products. Enable **In-App Purchase** on the App ID for iOS and macOS. Sandbox testers can buy without being charged.
+
+**Google Play Console:** Monetize → Subscriptions → two products with those IDs (or one subscription each with a monthly / yearly base plan using those IDs). Upload a build that includes Billing before the products can be activated.
+
+Windows has no Play/App Store IAP. Desktop debug / Windows stays Pro for local use. Production iOS, Android, and Mac App Store builds enforce the store.
+
+---
+
+## 9. Store support URL (Microsoft Partner Center)
+
+Public form (paste this as **Support info URL**):
+
+**https://huskytie463.github.io/StudyGrove/support/**
+
+GitHub → **Settings → Pages → Source: GitHub Actions** (workflow **Support site**). The form lives in `docs/support/`. Mail is sent by the Cloudflare Worker in `support-worker/` via Resend. The inbox is **not** in the repo.
+
+https://github.com/HuskyTie463/StudyGrove/settings/secrets/actions → **New repository secret**:
+
+| Secret | Paste |
+|---|---|
+| `SUPPORT_INBOX` | Destination mailbox (set this yourself; never commit it) |
+| `RESEND_API_KEY` | Resend API key |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare token that can edit Workers |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account id |
+
+Repository **variable** (not a secret — this is the public Worker origin only):
+
+| Variable | Paste |
+|---|---|
+| `SUPPORT_WORKER_URL` | Origin printed by `wrangler deploy`, e.g. `https://study-grove-support.<subdomain>.workers.dev` |
+
+Local Worker: copy `support-worker/.dev.vars.example` to `support-worker/.dev.vars` (gitignored). Values are set on the host. Then `npx wrangler deploy` from `support-worker/`, or run workflow **Support worker**.
+
+Settings in the app opens the same Pages URL. The form stays visible before the Worker is live; sending needs the secrets above.

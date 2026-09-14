@@ -303,11 +303,37 @@ class SgSegmented<T extends Object> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    // Time-only control: selected fill must read as "on" without error red.
+    // Material 3 defaults to secondaryContainer (terracotta / error-adjacent).
     return SegmentedButton<T>(
       segments: segments,
       selected: {selected},
       onSelectionChanged: (s) => onChanged(s.first),
       showSelectedIcon: false,
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return t.primaryAction;
+          }
+          return Colors.transparent;
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return t.onPrimaryAction;
+          }
+          return t.textPrimary;
+        }),
+        iconColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return t.onPrimaryAction;
+          }
+          return t.textPrimary;
+        }),
+        side: WidgetStateProperty.all(
+          BorderSide(color: t.border.withValues(alpha: 0.40)),
+        ),
+      ),
     );
   }
 }

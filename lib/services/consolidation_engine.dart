@@ -414,8 +414,11 @@ class ConsolidationEngine {
     buf.writeln();
     if (topics.isNotEmpty) {
       buf.writeln('Concepts:');
-      for (final t in topics.take(16)) {
+      for (final t in topics.take(32)) {
         buf.writeln('- ${t.title}');
+        if ((t.learningObjective ?? '').trim().isNotEmpty) {
+          buf.writeln('  objective: ${t.learningObjective}');
+        }
       }
       buf.writeln();
     }
@@ -424,16 +427,47 @@ class ConsolidationEngine {
     } else {
       buf.writeln('Notes:');
       var used = buf.length;
-      for (final l in lectures.take(6)) {
-        final body = l.body.trim();
-        if (body.isEmpty) continue;
-        final piece = '## ${l.title}\n${_clip(body, 2200)}\n\n';
-        if (used + piece.length > 12000) break;
+      for (final l in lectures.take(16)) {
+        final piece = _lectureBrief(l);
+        if (piece.trim().isEmpty) continue;
+        if (used + piece.length > 14000) break;
         buf.write(piece);
         used += piece.length;
       }
     }
     return buf.toString();
+  }
+
+  String _lectureBrief(LectureNote lecture) {
+    final out = StringBuffer('## ${lecture.title}\n');
+    final summary = (lecture.summary ?? '').trim();
+    if (summary.isNotEmpty) {
+      out.writeln('Summary: ${_clip(summary, 800)}');
+    }
+    for (final idea in lecture.keyIdeas.take(12)) {
+      final detail = idea.detail.trim();
+      out.writeln(
+        detail.isEmpty
+            ? '- ${idea.title}'
+            : '- ${idea.title}: ${_clip(detail, 280)}',
+      );
+    }
+    for (final table in lecture.tables.take(4)) {
+      final caption = (table.caption ?? '').trim();
+      if (caption.isNotEmpty) out.writeln('Table: $caption');
+      if (table.headers.isNotEmpty) {
+        out.writeln(table.headers.join(' | '));
+      }
+      for (final row in table.rows.take(6)) {
+        out.writeln(row.join(' | '));
+      }
+    }
+    final body = lecture.body.trim();
+    if (body.isNotEmpty) {
+      out.writeln(_clip(body, 1800));
+    }
+    out.writeln();
+    return out.toString();
   }
 
   List<KnobItem> buildKnobItems(
@@ -552,10 +586,23 @@ class ConsolidationEngine {
       }
       buf.writeln();
     }
-    for (final l in lectures.take(2)) {
-      if (l.body.trim().isEmpty) continue;
+    for (final l in lectures.take(4)) {
+      final summary = (l.summary ?? '').trim();
+      final body = l.body.trim();
+      if (summary.isEmpty && body.isEmpty && l.keyIdeas.isEmpty) continue;
       buf.writeln('From the lecture titled ${l.title}.');
-      buf.writeln(MathFormat.forSpeech(_clip(l.body, 500)));
+      if (summary.isNotEmpty) {
+        buf.writeln(MathFormat.forSpeech(_clip(summary, 400)));
+      }
+      for (final idea in l.keyIdeas.take(6)) {
+        buf.writeln(MathFormat.forSpeech(idea.title));
+        if (idea.detail.trim().isNotEmpty) {
+          buf.writeln(MathFormat.forSpeech(_clip(idea.detail, 180)));
+        }
+      }
+      if (body.isNotEmpty) {
+        buf.writeln(MathFormat.forSpeech(_clip(body, 400)));
+      }
       buf.writeln();
     }
     buf.writeln(
@@ -572,7 +619,13 @@ class ConsolidationEngine {
   ) {
     if (topics.isNotEmpty) return topics;
     return lectures
-        .where((l) => l.title.trim().isNotEmpty || l.body.trim().isNotEmpty)
+        .where(
+          (l) =>
+              l.title.trim().isNotEmpty ||
+              l.body.trim().isNotEmpty ||
+              (l.summary ?? '').trim().isNotEmpty ||
+              l.keyIdeas.isNotEmpty,
+        )
         .map(
           (l) => ReviewTopic(
             id: l.id,

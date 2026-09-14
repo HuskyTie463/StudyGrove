@@ -12,6 +12,7 @@ import '../services/math_format.dart';
 import '../services/neural_tts.dart';
 import '../services/safe_tts.dart';
 import '../services/study_ai_client.dart';
+import '../services/study_ai_session_note.dart';
 import '../services/study_ai_settings.dart';
 import '../services/tts_voice_settings.dart';
 import '../theme/design_tokens.dart';
@@ -555,6 +556,7 @@ class _SessionHost extends StatelessWidget {
         );
       case _Tool.voiceTutor:
         return VoiceTutorSession(
+          scopeKey: 'consolidation-${subject?.id ?? 'none'}',
           subjectLabel: subject?.label ?? 'this subject',
           lectures: lectures,
           topics: topics,
@@ -602,6 +604,7 @@ class _QuizSessionState extends State<_QuizSession> {
   }
 
   Future<void> _load() async {
+    Object? error;
     if (studyAiSettings.hasKey) {
       try {
         final items = await StudyAiClient.instance.generateQuiz(
@@ -614,12 +617,14 @@ class _QuizSessionState extends State<_QuizSession> {
         setState(() {
           _items = items;
           _loading = false;
-          _loadNote =
-              'Generated with Study AI.';
+          _loadNote = studyAiSessionNote(
+            fromAi: true,
+            hasItems: items.isNotEmpty,
+          );
         });
         return;
       } catch (e) {
-        _loadNote = 'AI quiz failed ($e). Using local items.';
+        error = e;
       }
     }
     final items = _engine.buildQuiz(
@@ -631,6 +636,11 @@ class _QuizSessionState extends State<_QuizSession> {
     setState(() {
       _items = items;
       _loading = false;
+      _loadNote = studyAiSessionNote(
+        fromAi: false,
+        error: error,
+        hasItems: items.isNotEmpty,
+      );
     });
   }
 
@@ -817,6 +827,7 @@ class _FlashSessionState extends State<_FlashSession>
   }
 
   Future<void> _load() async {
+    Object? error;
     if (studyAiSettings.hasKey &&
         (widget.topics.isNotEmpty || widget.lectures.isNotEmpty)) {
       try {
@@ -828,14 +839,17 @@ class _FlashSessionState extends State<_FlashSession>
         setState(() {
           _cards = [...cards]..shuffle();
           _loading = false;
-          _loadNote = 'Generated with Study AI.';
+          _loadNote = studyAiSessionNote(
+            fromAi: true,
+            hasItems: cards.isNotEmpty,
+          );
         });
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _focus.requestFocus();
         });
         return;
       } catch (e) {
-        _loadNote = 'AI cards failed ($e). Using saved items.';
+        error = e;
       }
     }
     final cards = _engine.buildFlashcards(widget.topics)..shuffle();
@@ -843,6 +857,11 @@ class _FlashSessionState extends State<_FlashSession>
     setState(() {
       _cards = cards;
       _loading = false;
+      _loadNote = studyAiSessionNote(
+        fromAi: false,
+        error: error,
+        hasItems: cards.isNotEmpty,
+      );
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focus.requestFocus();
@@ -1447,6 +1466,7 @@ class _KnobSessionState extends State<_KnobSession> {
   }
 
   Future<void> _load() async {
+    Object? error;
     final local = _engine.buildKnobItems(widget.topics, widget.lectures);
     if (local.isNotEmpty && mounted) {
       setState(() {
@@ -1467,19 +1487,26 @@ class _KnobSessionState extends State<_KnobSession> {
           setState(() {
             _items = items;
             _loading = false;
-            _loadNote =
-                'Generated with Study AI.';
+            _loadNote = studyAiSessionNote(
+              fromAi: true,
+              hasItems: items.isNotEmpty,
+            );
           });
         }
         return;
       } catch (e) {
-        _loadNote = 'AI knobs failed ($e). Using local items.';
+        error = e;
       }
     }
     if (!mounted) return;
     setState(() {
       _items = local;
       _loading = false;
+      _loadNote = studyAiSessionNote(
+        fromAi: false,
+        error: error,
+        hasItems: local.isNotEmpty,
+      );
     });
   }
 
@@ -1673,6 +1700,7 @@ class _TransferSessionState extends State<_TransferSession> {
   }
 
   Future<void> _load() async {
+    Object? error;
     final local = _engine.buildTransferItems(widget.topics, widget.lectures);
     if (local.isNotEmpty && mounted) {
       setState(() {
@@ -1693,19 +1721,26 @@ class _TransferSessionState extends State<_TransferSession> {
           setState(() {
             _items = items;
             _loading = false;
-            _loadNote =
-                'Generated with Study AI.';
+            _loadNote = studyAiSessionNote(
+              fromAi: true,
+              hasItems: items.isNotEmpty,
+            );
           });
         }
         return;
       } catch (e) {
-        _loadNote = 'AI stories failed ($e). Using local items.';
+        error = e;
       }
     }
     if (!mounted) return;
     setState(() {
       _items = local;
       _loading = false;
+      _loadNote = studyAiSessionNote(
+        fromAi: false,
+        error: error,
+        hasItems: local.isNotEmpty,
+      );
     });
   }
 

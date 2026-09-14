@@ -10,18 +10,26 @@ class NoteService {
   CollectionReference<Map<String, dynamic>> get _col =>
       _db.collection('users').doc(uid).collection('notes');
 
+  NoteItem _fromDoc(String id, Map<String, dynamic> data) {
+    return NoteItem(
+      id: id,
+      title: (data['title'] as String?) ?? '',
+      body: (data['body'] as String?) ?? '',
+      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
+      subjectId: data['subjectId'] as String?,
+    );
+  }
+
+  Future<NoteItem?> getNote(String id) async {
+    final snap = await _col.doc(id).get();
+    final data = snap.data();
+    if (!snap.exists || data == null) return null;
+    return _fromDoc(id, data);
+  }
+
   Stream<List<NoteItem>> streamNotes() {
     return _col.orderBy('updatedAt', descending: true).snapshots().map((snap) {
-      return snap.docs.map((d) {
-        final data = d.data();
-        return NoteItem(
-          id: d.id,
-          title: (data['title'] as String?) ?? '',
-          body: (data['body'] as String?) ?? '',
-          updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
-          subjectId: data['subjectId'] as String?,
-        );
-      }).toList();
+      return snap.docs.map((d) => _fromDoc(d.id, d.data())).toList();
     });
   }
 

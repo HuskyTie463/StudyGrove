@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../services/event_service.dart';
 import '../services/subject_service.dart';
 import '../ui/shared_ui.dart';
+import '../ui/shell_nav.dart';
 import '../ui/shell_scope.dart';
 import '../utils/datetime_utils.dart';
 
@@ -31,6 +32,8 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
   Stream<Map<String, List<AppEvent>>>? _weekStream;
   late final Stream<List<Subject>> _subjectsStream;
   List<Subject> _subjects = const [];
+  late final PageController _phoneDayController;
+  late int _phoneDayIndex;
 
   static const double _pxPerMinute = 1.25;
   static const double _minBlockHeight = 36;
@@ -42,6 +45,14 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
   void initState() {
     super.initState();
     _subjectsStream = widget.subjectService.streamSubjects();
+    _phoneDayIndex = DateTime.now().weekday - DateTime.monday;
+    _phoneDayController = PageController(initialPage: _phoneDayIndex);
+  }
+
+  @override
+  void dispose() {
+    _phoneDayController.dispose();
+    super.dispose();
   }
 
   Map<String, Subject> get _subjectsById =>
@@ -113,11 +124,130 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
         '${_monthNames[end.month - 1]} ${end.day}, ${end.year}';
   }
 
+  Future<void> _goPhoneDay(int delta) async {
+    final next = _phoneDayIndex + delta;
+    if (next > 6) {
+      setState(() {
+        _weekStart = _weekStart.add(const Duration(days: 7));
+        _phoneDayIndex = 0;
+      });
+      if (_phoneDayController.hasClients) {
+        _phoneDayController.jumpToPage(0);
+      }
+      return;
+    }
+    if (next < 0) {
+      setState(() {
+        _weekStart = _weekStart.subtract(const Duration(days: 7));
+        _phoneDayIndex = 6;
+      });
+      if (_phoneDayController.hasClients) {
+        _phoneDayController.jumpToPage(6);
+      }
+      return;
+    }
+    if (_phoneDayController.hasClients) {
+      await _phoneDayController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      setState(() => _phoneDayIndex = next);
+    }
+  }
+
+  Widget _phoneDayPager({
+    required List<DateTime> dates,
+    required Map<String, List<AppEvent>> grouped,
+    required Map<String, Subject> byId,
+  }) {
+    final date = dates[_phoneDayIndex.clamp(0, 6)];
+    return Column(
+      children: [
+        Row(
+          children: [
+            IconButton(
+              tooltip: 'Previous day',
+              onPressed: () => _goPhoneDay(-1),
+              icon: const Icon(Icons.chevron_left),
+            ),
+            Expanded(
+              child: Text(
+                '${_dayNames[_phoneDayIndex.clamp(0, 6)]} ${date.day} '
+                '${_monthNames[date.month - 1]}',
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Next day',
+              onPressed: () => _goPhoneDay(1),
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: PageView.builder(
+            controller: _phoneDayController,
+            onPageChanged: (i) => setState(() => _phoneDayIndex = i),
+            itemCount: 7,
+            itemBuilder: (context, index) {
+              final day = dates[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: _DayColumn(
+                  date: day,
+                  dayName: _dayNames[index],
+                  isToday: _isToday(day),
+                  events: grouped[dayKey(day)] ?? const [],
+                  subjectsById: byId,
+                  pxPerMinute: _pxPerMinute,
+                  minBlockHeight: _minBlockHeight,
+                  defaultStartMinutes: _defaultStartMinutes,
+                  defaultEndMinutes: _defaultEndMinutes,
+                  rangePaddingMinutes: _rangePaddingMinutes,
+                  compactFit: true,
+                  hideDayLabel: true,
+                  onAdd: () => _addEvent(day),
+                  onOpen: _openEvent,
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   TimeOfDay _defaultEndFor(TimeOfDay start) =>
       minutesToTimeOfDay(resolveEndMinutes(timeToMinutes(start), null));
 
+  int _defaultEventColor({int? stored, String? subjectId}) {
+    if (stored != null) return stored;
+    final subject = subjectId == null ? null : _subjectsById[subjectId];
+    return subject?.colorValue ?? kSubjectColorPalette.first;
+  }
+
+  Color _eventAccent(AppEvent event, ColorScheme scheme) {
+    final subjectColor = event.subjectId != null
+        ? _subjectsById[event.subjectId!]?.color
+        : null;
+    return event.resolvedColor(
+      subjectColor: subjectColor,
+      fallback: scheme.primary,
+    );
+  }
+
   Future<void> _addEvent(DateTime date) async {
     final now = TimeOfDay.now();
+    final scopedSubject = ShellScope.maybeOf(context)?.subjectId;
     final draft = await _showEventEditor(
       title: 'Add to ${_dayNames[date.weekday - 1]}',
       initialDay: date,
@@ -125,7 +255,8 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
       initialLocation: '',
       initialTime: now,
       initialEndTime: _defaultEndFor(now),
-      initialSubjectId: ShellScope.maybeOf(context)?.subjectId,
+      initialSubjectId: scopedSubject,
+      initialColorValue: _defaultEventColor(subjectId: scopedSubject),
       allowRepeatToggle: true,
       initialRepeatWeekly: false,
       confirmLabel: 'Add',
@@ -140,6 +271,7 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
         endTime: draft.endTime,
         location: draft.location,
         subjectId: draft.subjectId,
+        colorValue: draft.colorValue,
       );
     } else {
       await widget.eventService.addEvent(
@@ -149,6 +281,7 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
         endTime: draft.endTime,
         location: draft.location,
         subjectId: draft.subjectId,
+        colorValue: draft.colorValue,
       );
     }
   }
@@ -185,7 +318,7 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.event_note, color: scheme.primary),
+                  Icon(Icons.event_note, color: _eventAccent(event, scheme)),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -270,6 +403,10 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
       initialTime: event.start,
       initialEndTime: event.end,
       initialSubjectId: event.subjectId,
+      initialColorValue: _defaultEventColor(
+        stored: event.colorValue,
+        subjectId: event.subjectId,
+      ),
       allowRepeatToggle: false,
       initialRepeatWeekly: event.isRecurring,
       confirmLabel: 'Save',
@@ -284,6 +421,7 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
       endTime: draft.endTime,
       location: draft.location,
       subjectId: draft.subjectId,
+      colorValue: draft.colorValue,
     );
   }
 
@@ -295,6 +433,7 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
     required TimeOfDay initialTime,
     required TimeOfDay initialEndTime,
     required String? initialSubjectId,
+    required int initialColorValue,
     required bool allowRepeatToggle,
     required bool initialRepeatWeekly,
     required String confirmLabel,
@@ -306,6 +445,7 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
     var day = initialDay;
     var repeatWeekly = initialRepeatWeekly;
     String? subjectId = initialSubjectId;
+    var colorValue = initialColorValue;
 
     void ensureEndAfterStart(void Function(void Function()) setDialogState) {
       final startMins = timeToMinutes(time);
@@ -366,6 +506,11 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
                     ),
                   ],
                   onChanged: (v) => setDialogState(() => subjectId = v),
+                ),
+                const SizedBox(height: 16),
+                _EventColorPicker(
+                  colorValue: colorValue,
+                  onChanged: (c) => setDialogState(() => colorValue = c),
                 ),
                 const SizedBox(height: 12),
                 ListTile(
@@ -475,6 +620,7 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
       location: resultLocation.isEmpty ? null : resultLocation,
       repeatWeekly: repeatWeekly,
       subjectId: subjectId,
+      colorValue: colorValue,
     );
   }
 
@@ -552,6 +698,14 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
                             snapshot.data ?? const <String, List<AppEvent>>{};
                         return LayoutBuilder(
                           builder: (context, constraints) {
+                            final phone = !useDesktopChrome(context);
+                            if (phone) {
+                              return _phoneDayPager(
+                                dates: dates,
+                                grouped: grouped,
+                                byId: byId,
+                              );
+                            }
                             final separators = 10.0 * 6;
                             final fitted =
                                 (constraints.maxWidth - separators) / 7;
@@ -586,38 +740,10 @@ class _WeeklyPlannerPageState extends State<WeeklyPlannerPage> {
                                 ],
                               );
                             }
-                            final columnWidth = math.max(120.0, fitted);
-                            return Scrollbar(
-                              thumbVisibility: true,
-                              child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: dates.length,
-                                separatorBuilder: (_, _) =>
-                                    const SizedBox(width: 10),
-                                itemBuilder: (context, index) {
-                                  final date = dates[index];
-                                  return SizedBox(
-                                    width: columnWidth,
-                                    child: _DayColumn(
-                                      date: date,
-                                      dayName: _dayNames[index],
-                                      isToday: _isToday(date),
-                                      events:
-                                          grouped[dayKey(date)] ?? const [],
-                                      subjectsById: byId,
-                                      pxPerMinute: _pxPerMinute,
-                                      minBlockHeight: _minBlockHeight,
-                                      defaultStartMinutes:
-                                          _defaultStartMinutes,
-                                      defaultEndMinutes: _defaultEndMinutes,
-                                      rangePaddingMinutes:
-                                          _rangePaddingMinutes,
-                                      onAdd: () => _addEvent(date),
-                                      onOpen: _openEvent,
-                                    ),
-                                  );
-                                },
-                              ),
+                            return _phoneDayPager(
+                              dates: dates,
+                              grouped: grouped,
+                              byId: byId,
                             );
                           },
                         );
@@ -719,6 +845,7 @@ class _EventDraft {
     required this.location,
     required this.repeatWeekly,
     required this.subjectId,
+    required this.colorValue,
   });
 
   final DateTime day;
@@ -728,6 +855,71 @@ class _EventDraft {
   final String? location;
   final bool repeatWeekly;
   final String? subjectId;
+  final int colorValue;
+}
+
+class _EventColorPicker extends StatelessWidget {
+  const _EventColorPicker({
+    required this.colorValue,
+    required this.onChanged,
+  });
+
+  final int colorValue;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final colors = [
+      ...kSubjectColorPalette,
+      if (!kSubjectColorPalette.contains(colorValue)) colorValue,
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Colour',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface.withValues(alpha: 0.88),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final c in colors)
+              InkWell(
+                key: ValueKey('event-color-$c'),
+                onTap: () => onChanged(c),
+                borderRadius: BorderRadius.circular(999),
+                child: Tooltip(
+                  message: 'Event colour',
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Color(c),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: colorValue == c
+                            ? scheme.onSurface
+                            : scheme.outline.withValues(alpha: 0.35),
+                        width: colorValue == c ? 2.5 : 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 class _InfoRow extends StatelessWidget {
@@ -829,6 +1021,8 @@ class _DayColumn extends StatelessWidget {
     required this.rangePaddingMinutes,
     required this.onAdd,
     required this.onOpen,
+    this.compactFit = false,
+    this.hideDayLabel = false,
   });
 
   final DateTime date;
@@ -843,6 +1037,8 @@ class _DayColumn extends StatelessWidget {
   final int rangePaddingMinutes;
   final VoidCallback onAdd;
   final ValueChanged<AppEvent> onOpen;
+  final bool compactFit;
+  final bool hideDayLabel;
 
   (int, int) _visibleRange() {
     var start = defaultStartMinutes;
@@ -867,7 +1063,6 @@ class _DayColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final (rangeStart, rangeEnd) = _visibleRange();
-    final gridHeight = (rangeEnd - rangeStart) * pxPerMinute;
 
     return Container(
       decoration: BoxDecoration(
@@ -883,35 +1078,43 @@ class _DayColumn extends StatelessWidget {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 8, 8),
+            padding: EdgeInsets.fromLTRB(
+              12,
+              hideDayLabel ? 4 : 12,
+              8,
+              hideDayLabel ? 4 : 8,
+            ),
             child: Row(
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        dayName.substring(0, 3).toUpperCase(),
-                        style: TextStyle(
-                          color: isToday
-                              ? scheme.primary
-                              : scheme.onSurface.withValues(alpha: 0.88),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1,
+                if (!hideDayLabel)
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          dayName.substring(0, 3).toUpperCase(),
+                          style: TextStyle(
+                            color: isToday
+                                ? scheme.primary
+                                : scheme.onSurface.withValues(alpha: 0.88),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${date.day}',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
+                        const SizedBox(height: 2),
+                        Text(
+                          '${date.day}',
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
+                      ],
+                    ),
+                  )
+                else
+                  const Spacer(),
                 IconButton(
                   tooltip: 'Add event',
                   onPressed: onAdd,
@@ -922,63 +1125,87 @@ class _DayColumn extends StatelessWidget {
           ),
           Divider(color: scheme.outline.withValues(alpha: 0.25), height: 1),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(6, 8, 6, 12),
-              child: SizedBox(
-                height: gridHeight,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final slots = _placeOverlapping(events);
-                    final columns = slots.fold<int>(
-                      1,
-                      (m, s) => math.max(m, s.columnCount),
-                    );
-                    final widthEach = (constraints.maxWidth - 44) / columns;
-                    return Stack(
-                      children: [
-                        ..._hourLines(context, rangeStart, rangeEnd),
-                        if (events.isEmpty)
-                          Positioned.fill(
-                            child: Center(
-                              child: Text(
-                                isToday ? 'Your day is clear' : 'No events',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color:
-                                      scheme.onSurface.withValues(alpha: 0.86),
-                                  fontSize: 12,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final minutes = math.max(60, rangeEnd - rangeStart);
+                final fittedPx = compactFit
+                    ? (constraints.maxHeight / minutes).clamp(0.35, pxPerMinute)
+                    : pxPerMinute;
+                final gridHeight = compactFit
+                    ? constraints.maxHeight
+                    : minutes * pxPerMinute;
+                final grid = SizedBox(
+                  height: gridHeight,
+                  child: LayoutBuilder(
+                    builder: (context, inner) {
+                      final slots = _placeOverlapping(events);
+                      final columns = slots.fold<int>(
+                        1,
+                        (m, s) => math.max(m, s.columnCount),
+                      );
+                      final widthEach = (inner.maxWidth - 44) / columns;
+                      return Stack(
+                        children: [
+                          ..._hourLines(
+                            context,
+                            rangeStart,
+                            rangeEnd,
+                            px: fittedPx,
+                          ),
+                          if (events.isEmpty)
+                            Positioned.fill(
+                              child: Center(
+                                child: Text(
+                                  isToday ? 'Your day is clear' : 'No events',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: scheme.onSurface
+                                        .withValues(alpha: 0.86),
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ...slots.map((slot) {
-                          final event = slot.event;
-                          final top = (event.startMinutes - rangeStart) *
-                              pxPerMinute;
-                          final naturalHeight =
-                              (event.endMinutes - event.startMinutes) *
-                                  pxPerMinute;
-                          final height = math.max(22.0, naturalHeight);
-                          return Positioned(
-                            top: top,
-                            left: 44 + slot.column * widthEach + 1,
-                            width: math.max(12.0, widthEach - 2),
-                            height: height,
-                            child: _WeeklyEventCard(
-                              event: event,
+                          ...slots.map((slot) {
+                            final event = slot.event;
+                            final top = (event.startMinutes - rangeStart) *
+                                fittedPx;
+                            final naturalHeight =
+                                (event.endMinutes - event.startMinutes) *
+                                    fittedPx;
+                            final height = math.max(
+                              compactFit ? 18.0 : 22.0,
+                              naturalHeight,
+                            );
+                            return Positioned(
+                              top: top,
+                              left: 44 + slot.column * widthEach + 1,
+                              width: math.max(12.0, widthEach - 2),
                               height: height,
-                              subjectColor: event.subjectId != null
-                                  ? subjectsById[event.subjectId!]?.color
-                                  : null,
-                              onTap: () => onOpen(event),
-                            ),
-                          );
-                        }),
-                      ],
-                    );
-                  },
-                ),
-              ),
+                              child: _WeeklyEventCard(
+                                event: event,
+                                height: height,
+                                accent: event.resolvedColor(
+                                  subjectColor: event.subjectId != null
+                                      ? subjectsById[event.subjectId!]?.color
+                                      : null,
+                                  fallback: scheme.primary,
+                                ),
+                                onTap: () => onOpen(event),
+                              ),
+                            );
+                          }),
+                        ],
+                      );
+                    },
+                  ),
+                );
+                if (compactFit) return grid;
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(6, 8, 6, 12),
+                  child: grid,
+                );
+              },
             ),
           ),
         ],
@@ -986,11 +1213,16 @@ class _DayColumn extends StatelessWidget {
     );
   }
 
-  List<Widget> _hourLines(BuildContext context, int rangeStart, int rangeEnd) {
+  List<Widget> _hourLines(
+    BuildContext context,
+    int rangeStart,
+    int rangeEnd, {
+    required double px,
+  }) {
     final scheme = Theme.of(context).colorScheme;
     final lines = <Widget>[];
     for (var m = rangeStart; m <= rangeEnd; m += 60) {
-      final top = (m - rangeStart) * pxPerMinute;
+      final top = (m - rangeStart) * px;
       final label = minutesToTimeOfDay(m.clamp(0, 24 * 60 - 1)).format(context);
       lines.add(
         Positioned(
@@ -1032,18 +1264,17 @@ class _WeeklyEventCard extends StatelessWidget {
     required this.event,
     required this.height,
     required this.onTap,
-    this.subjectColor,
+    required this.accent,
   });
 
   final AppEvent event;
   final double height;
   final VoidCallback onTap;
-  final Color? subjectColor;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final accent = subjectColor ?? scheme.primary;
     final location = event.location?.trim();
     final range = formatTimeRange(
       context,

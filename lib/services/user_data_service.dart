@@ -20,6 +20,9 @@ class UserDataService {
     await _deleteCollection(_userDoc.collection('review_topics'));
     await _deleteCollection(_userDoc.collection('friction_signals'));
     await _deleteCollection(_userDoc.collection('metrics'));
+    // Licence acceptances: deleted with the account where lawful. Retention
+    // for legal defence after deletion is described in the Privacy Policy.
+    await _deleteCollection(_userDoc.collection('licenceAcceptances'));
 
     // Optional: delete the user doc itself (only if you store profile data there)
     await _userDoc.delete().catchError((_) {});

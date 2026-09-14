@@ -227,3 +227,13 @@ ShellSectionDef? sectionDef(ShellSection section) {
   }
   return null;
 }
+
+/// Study section only. Home / Plan / Subjects stay free, including Notes
+/// (Home) and Assessments (Plan).
+bool pageRequiresPro(AppPage page) {
+  return sectionForPage(page) == ShellSection.study;
+}
+
+bool sectionRequiresPro(ShellSection section) {
+  return section == ShellSection.study;
+}

@@ -4,7 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_organiser/models/models.dart';
+import 'package:flutter_organiser/services/consolidation_engine.dart';
 import 'package:flutter_organiser/services/gap_engine.dart';
+import 'package:flutter_organiser/services/lecture_lab_service.dart';
 import 'package:flutter_organiser/services/memory_weather_engine.dart';
 import 'package:flutter_organiser/services/readiness_engine.dart';
 import 'package:flutter_organiser/theme/app_theme_builder.dart';
@@ -105,6 +107,7 @@ void main() {
       );
       final e = engine.explain(a);
       expect(e.state, ReadinessState.missingInformation);
+      expect(e.state.calmLabel, 'Getting ready');
       expect(a.weightPercent, isNull);
       expect(e.factors.any((f) => f.contains('Weight not set')), isTrue);
     });
@@ -264,6 +267,125 @@ This is a very long paragraph that should not become a topic because it has too 
       expect(topics, contains('Photosynthesis'));
       expect(topics, contains('Light reactions'));
       expect(topics, contains('Calvin cycle'));
+    });
+  });
+
+  group('Lecture notes and All lectures briefing', () {
+    test('lectureFromDoc keeps extra fields and ignores bad types', () {
+      final note = LectureLabService.lectureFromDoc('lec-1', {
+        'title': 'Cell membranes',
+        'body': '',
+        'subjectId': 42,
+        'course': 'BIO',
+        'lectureDate': 'not-a-timestamp',
+        'topicIds': 'solo',
+        'keyIdeas': [
+          {'title': 'Phospholipid bilayer', 'detail': 'Heads out, tails in'},
+          'Osmosis',
+          3,
+        ],
+        'tables': [
+          {
+            'caption': 'Transport',
+            'headers': ['Type', 'Needs energy'],
+            'rows': [
+              ['Passive', 'No'],
+            ],
+          },
+        ],
+        'summary': 'Membranes control what enters the cell.',
+        'archived': true,
+        'completed': false,
+        'mystery': {'nested': true},
+      });
+      expect(note.title, 'Cell membranes');
+      expect(note.subjectId, '42');
+      expect(note.summary, contains('Membranes'));
+      expect(note.keyIdeas.map((e) => e.title), contains('Phospholipid bilayer'));
+      expect(note.keyIdeas.map((e) => e.title), contains('Osmosis'));
+      expect(note.tables, isNotEmpty);
+      expect(note.tables.first.caption, 'Transport');
+    });
+
+    test('tutorBriefing for All lectures includes every lecture and concept', () {
+      const engine = ConsolidationEngine();
+      final lectures = [
+        LectureNote(
+          id: 'a',
+          title: 'Lecture A',
+          body: '',
+          subjectId: 'chem',
+          summary: 'Atoms share electrons.',
+          keyIdeas: const [LectureKeyIdea(title: 'Covalent bond')],
+        ),
+        LectureNote(
+          id: 'b',
+          title: 'Lecture B',
+          body: 'Only body text here.',
+          subjectId: 'bio',
+        ),
+      ];
+      final topics = [
+        ReviewTopic(id: 't1', title: 'Covalent bond', subjectId: 'chem'),
+        ReviewTopic(id: 't2', title: 'Mitosis', subjectId: 'bio'),
+      ];
+      final briefing = engine.tutorBriefing(
+        subjectLabel: 'all lectures',
+        lectures: lectures,
+        topics: topics,
+      );
+      expect(briefing, contains('Covalent bond'));
+      expect(briefing, contains('Mitosis'));
+      expect(briefing, contains('Lecture A'));
+      expect(briefing, contains('Lecture B'));
+      expect(briefing, contains('Atoms share electrons'));
+      expect(briefing, contains('Only body text here'));
+    });
+  });
+
+  group('Event colour', () {
+    AppEvent event({int? colorValue, String? subjectId}) {
+      return AppEvent(
+        id: 'e',
+        title: 'Study block',
+        dayKey: '2026-09-14',
+        startMinutes: 9 * 60,
+        colorValue: colorValue,
+        subjectId: subjectId,
+      );
+    }
+
+    test('legacy events without a colour keep subject then theme fallback', () {
+      final legacy = event();
+      expect(legacy.colorValue, isNull);
+      expect(
+        legacy.resolvedColor(fallback: const Color(0xFF112233)),
+        const Color(0xFF112233),
+      );
+      expect(
+        legacy.resolvedColor(
+          subjectColor: const Color(0xFF6FA98A),
+          fallback: const Color(0xFF112233),
+        ),
+        const Color(0xFF6FA98A),
+      );
+    });
+
+    test('chosen colour wins over subject colour', () {
+      final chosen = event(colorValue: 0xFFE8B4A0, subjectId: 'chem');
+      expect(
+        chosen.resolvedColor(
+          subjectColor: const Color(0xFF6FA98A),
+          fallback: const Color(0xFF112233),
+        ),
+        const Color(0xFFE8B4A0),
+      );
+    });
+
+    test('palette is a small Grove set without raw hex entry', () {
+      expect(kSubjectColorPalette.length, 10);
+      expect(kSubjectColorPalette, contains(0xFF6FA98A));
+      expect(kSubjectColorPalette.toSet().length, kSubjectColorPalette.length);
     });
   });
 }

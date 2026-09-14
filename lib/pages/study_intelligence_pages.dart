@@ -11,11 +11,11 @@ import '../services/lecture_file_import.dart';
 import '../services/lecture_lab_service.dart';
 import '../services/study_ai_settings.dart';
 import '../services/memory_weather_engine.dart';
-import '../services/readiness_engine.dart';
 import '../theme/design_tokens.dart';
+import '../utils/datetime_utils.dart';
 import '../ui/math_text.dart';
 import '../ui/sg_primitives.dart';
-import '../ui/shell_scope.dart';
+import 'lecture_summary_page.dart';
 
 class LectureLabPage extends StatefulWidget {
   const LectureLabPage({
@@ -255,17 +255,13 @@ class _LectureLabPageState extends State<LectureLabPage> {
           StreamBuilder<List<LectureNote>>(
             stream: widget.service.streamLectures(),
             builder: (context, snap) {
-              final list = (snap.data ?? const <LectureNote>[])
-                  .where(
-                    (l) => matchesSelectedSubject(
-                      selectedId: widget.initialSubjectId,
-                      subjects: widget.subjects,
-                      itemSubjectId: l.subjectId,
-                      course: l.course,
-                      title: l.title,
-                    ),
-                  )
-                  .toList();
+              if (snap.hasError) {
+                return Text(
+                  'Could not load lectures: ${snap.error}',
+                  style: TextStyle(color: t.urgent),
+                );
+              }
+              final list = snap.data ?? const <LectureNote>[];
               if (list.isEmpty) {
                 return Text('None yet.', style: TextStyle(color: t.textMuted));
               }
@@ -302,165 +298,13 @@ class _LectureLabPageState extends State<LectureLabPage> {
 
   Future<void> _openLecture(LectureNote lecture) async {
     if (!mounted) return;
-    final t = context.tokens;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        return StreamBuilder<List<ReviewTopic>>(
-          stream: widget.service.streamTopics(),
-          builder: (ctx, snap) {
-            final topics = (snap.data ?? const <ReviewTopic>[])
-                .where(
-                  (topic) =>
-                      topic.sourceLectureId == lecture.id ||
-                      lecture.topicIds.contains(topic.id),
-                )
-                .toList();
-            final objectives = lecture.learningObjectives;
-            final hasObjectives = objectives.isNotEmpty;
-            final hasTopics = topics.isNotEmpty;
-            final summary = hasTopics
-                ? 'This lecture covers ${topics.map((e) => e.title).take(6).join(', ')}${topics.length > 6 ? '…' : ''}.'
-                : null;
-            return AlertDialog(
-              title: MathText(lecture.title),
-              content: SizedBox(
-                width: (MediaQuery.sizeOf(ctx).width - 48).clamp(240.0, 480.0),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (lecture.course != null)
-                        Padding(
-                          padding: EdgeInsets.only(bottom: t.gap(1.5)),
-                          child: Text(
-                            lecture.course!,
-                            style: TextStyle(color: t.textMuted),
-                          ),
-                        ),
-                      Text(
-                        'Summary',
-                        style: Theme.of(ctx).textTheme.titleMedium,
-                      ),
-                      SizedBox(height: t.gap(0.75)),
-                      if (summary != null)
-                        MathText(summary, style: const TextStyle(height: 1.4))
-                      else
-                        Text(
-                          widget.service.supportsAi
-                              ? 'No summary yet. Extract with AI from your notes to build one.'
-                              : 'No summary yet. Extract topics from your notes to build one.',
-                          style: TextStyle(color: t.textMuted, height: 1.4),
-                        ),
-                      SizedBox(height: t.gap(2)),
-                      Text(
-                        'Learning objectives',
-                        style: Theme.of(ctx).textTheme.titleMedium,
-                      ),
-                      SizedBox(height: t.gap(0.75)),
-                      if (hasObjectives)
-                        ...objectives.map(
-                          (o) => Padding(
-                            padding: EdgeInsets.only(bottom: t.gap(0.75)),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('•  ', style: TextStyle(color: t.primaryAction)),
-                                Expanded(child: MathText(o)),
-                              ],
-                            ),
-                          ),
-                        )
-                      else if (topics
-                          .where((e) => (e.learningObjective ?? '').isNotEmpty)
-                          .isNotEmpty)
-                        ...topics
-                            .where((e) => (e.learningObjective ?? '').isNotEmpty)
-                            .map(
-                              (e) => Padding(
-                                padding: EdgeInsets.only(bottom: t.gap(0.75)),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('•  ',
-                                        style: TextStyle(color: t.primaryAction)),
-                                    Expanded(child: MathText(e.learningObjective!)),
-                                  ],
-                                ),
-                              ),
-                            )
-                      else
-                        Text(
-                          'No learning objectives stored for this lecture.',
-                          style: TextStyle(color: t.textMuted, height: 1.4),
-                        ),
-                      if (hasTopics) ...[
-                        SizedBox(height: t.gap(2)),
-                        Text(
-                          'Recall cards',
-                          style: Theme.of(ctx).textTheme.titleMedium,
-                        ),
-                        SizedBox(height: t.gap(0.75)),
-                        ...topics.expand((topic) {
-                          final qs = topic.questions;
-                          return [
-                            Padding(
-                              padding: EdgeInsets.only(bottom: t.gap(0.5)),
-                              child: MathText(
-                                topic.title,
-                                style: const TextStyle(fontWeight: FontWeight.w800),
-                              ),
-                            ),
-                            if (qs.isEmpty)
-                              Padding(
-                                padding: EdgeInsets.only(bottom: t.gap(1)),
-                                child: MathText(
-                                  'What is ${topic.title}?',
-                                  style: TextStyle(color: t.textSecondary, height: 1.4),
-                                ),
-                              )
-                            else
-                              ...qs.map(
-                                (q) => Padding(
-                                  padding: EdgeInsets.only(bottom: t.gap(1)),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      MathText(
-                                        q.prompt,
-                                        style: const TextStyle(height: 1.35),
-                                      ),
-                                      if ((q.answer ?? '').trim().isNotEmpty) ...[
-                                        SizedBox(height: t.gap(0.35)),
-                                        MathText(
-                                          q.answer!,
-                                          style: TextStyle(
-                                            color: t.textSecondary,
-                                            height: 1.4,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ),
-                          ];
-                        }),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Close'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => LectureSummaryPage(
+          lecture: lecture,
+          service: widget.service,
+        ),
+      ),
     );
   }
 
@@ -581,7 +425,7 @@ class _LectureLabPageState extends State<LectureLabPage> {
     try {
       final subject = _subject;
       final objectives = _parseObjectives();
-      await widget.service.saveLecture(
+      final id = await widget.service.saveLecture(
         title: title,
         body: notes,
         course: subject?.label,
@@ -597,22 +441,10 @@ class _LectureLabPageState extends State<LectureLabPage> {
       _bodyCtrl.clear();
       _objectivesCtrl.clear();
       _attached.clear();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widget.service.supportsAi
-                  ? (objectives.isEmpty
-                      ? (pdf != null
-                          ? 'AI extracted topics from the PDF'
-                          : 'AI extracted topics from your notes')
-                      : 'AI aligned topics to learning objectives')
-                  : (objectives.isEmpty
-                      ? 'Topics and recall questions created from notes'
-                      : 'Topics aligned to learning objectives'),
-            ),
-          ),
-        );
+      final saved = await widget.service.getLecture(id);
+      if (!mounted) return;
+      if (saved != null) {
+        await _openLecture(saved);
       }
     } catch (e) {
       if (mounted) {
@@ -715,7 +547,7 @@ class GapSessionCard extends StatelessWidget {
   }
 }
 
-/// Small readiness strip for dashboard using real assessment data.
+/// Next due assessment on the dashboard (title + date, no status chips).
 class DashboardReadinessStrip extends StatelessWidget {
   const DashboardReadinessStrip({
     super.key,
@@ -728,35 +560,41 @@ class DashboardReadinessStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final engine = const AssessmentReadinessEngine();
-    final hero = engine.mostImportant(assessments);
+    final active = assessments.where((a) => a.isActive).toList()
+      ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+    final hero = active.isEmpty ? null : active.first;
     final t = context.tokens;
     if (hero == null) {
       return SgCard(
         onTap: onOpen,
         child: Text(
-          'No assessments yet — add one to unlock readiness planning.',
+          'No assessments yet — add one with a due date.',
           style: TextStyle(color: t.textMuted),
         ),
       );
     }
-    final e = engine.explain(hero);
     return SgCard(
       onTap: onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Next pressure',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.2,
-                color: t.textMuted,
-              )),
+          Text(
+            'Next assessment',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+              color: t.textMuted,
+            ),
+          ),
           SizedBox(height: t.gap(0.75)),
           MathText(hero.title, style: Theme.of(context).textTheme.titleMedium),
           Text(
-            '${e.state.calmLabel} · ${hero.dueLabel}',
+            formatDueDateTime(
+              context,
+              hero.dueDate,
+              timeZoneId: hero.timeZoneId,
+            ),
             style: TextStyle(color: t.textSecondary, fontSize: 13),
           ),
         ],

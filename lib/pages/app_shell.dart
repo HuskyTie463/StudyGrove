@@ -13,10 +13,14 @@ import '../services/lecture_lab_service.dart';
 import '../services/note_service.dart';
 import '../services/profile_service.dart';
 import '../services/study_time_service.dart';
+import '../services/entitlement_service.dart';
 import '../services/subject_service.dart';
 import '../services/task_service.dart';
+import 'paywall_sheet.dart';
 import '../theme/chrome_palettes.dart';
 import '../theme/design_tokens.dart';
+import '../ui/add_task_dialog.dart';
+import '../ui/pro_lock.dart';
 import '../ui/shared_ui.dart';
 import '../ui/shell_nav.dart';
 import '../ui/shell_scope.dart';
@@ -79,9 +83,9 @@ class _AppShellState extends State<AppShell> {
 
     _taskSvc = TaskService(_uid);
     _eventSvc = EventService(_uid);
-    _assessSvc = AssessmentService(_uid);
-    _subjectSvc = SubjectService(_uid);
     _lectureLabSvc = LectureLabService(_uid);
+    _assessSvc = AssessmentService(_uid, lectureLab: _lectureLabSvc);
+    _subjectSvc = SubjectService(_uid);
     _frictionSvc = FrictionService(_uid);
     _progressSvc = ProgressMetricsService(_uid);
     _noteSvc = NoteService(_uid);
@@ -131,6 +135,10 @@ class _AppShellState extends State<AppShell> {
   DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   void _setPage(AppPage p) {
+    if (pageRequiresPro(p) && !entitlementService.isPro) {
+      showStudyGrovePaywall(context);
+      return;
+    }
     setState(() {
       if (p != _page) {
         _previous = _page;
@@ -195,12 +203,8 @@ class _AppShellState extends State<AppShell> {
             // paint a second copy — they only sit on top of this layer.
             ExcludeSemantics(
               child: RepaintBoundary(
-                child: Image.asset(
-                  themeController.backgroundAsset,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
-                  filterQuality: FilterQuality.medium,
-                  gaplessPlayback: true,
+                child: GroveWallpaper(
+                  asset: themeController.backgroundAsset,
                 ),
               ),
             ),
@@ -219,7 +223,11 @@ class _AppShellState extends State<AppShell> {
     final validId =
         subjects.any((s) => s.id == _subjectId) ? _subjectId : null;
     return AnimatedBuilder(
-      animation: Listenable.merge([_profile, themeController]),
+      animation: Listenable.merge([
+        _profile,
+        themeController,
+        entitlementService,
+      ]),
       builder: (context, _) {
         return ShellScope(
           page: _page,
@@ -402,6 +410,10 @@ class _AppShellState extends State<AppShell> {
               ListTile(
                 leading: Icon(child.icon),
                 title: Text(child.label),
+                trailing: pageRequiresPro(child.page) &&
+                        !entitlementService.isPro
+                    ? const ProLockBadge(compact: true)
+                    : null,
                 selected: child.page == _page,
                 onTap: () {
                   Navigator.pop(ctx);
@@ -421,15 +433,7 @@ class _AppShellState extends State<AppShell> {
     required List<Subject> subjects,
   }) {
     final opacity = themeController.panelOpacity;
-    final scopedTasks = tasks
-        .where(
-          (t) => _matchesSubject(
-            itemSubjectId: t.subjectId,
-            title: t.title,
-            subjects: subjects,
-          ),
-        )
-        .toList();
+    final scopedTasks = tasks;
     final scopedAssessments = assessments
         .where(
           (a) => _matchesSubject(
@@ -450,14 +454,41 @@ class _AppShellState extends State<AppShell> {
         )
         .toList();
 
+    if (pageRequiresPro(_page) && !entitlementService.isPro) {
+      return SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const ProLockBadge(),
+                const SizedBox(height: 12),
+                const Text(
+                  'Study is included with Pro.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => showStudyGrovePaywall(context),
+                  child: const Text('See Pro plans'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     switch (_page) {
       case AppPage.dashboard:
         final today = _dayOnly(DateTime.now());
         final todayEvents = (_dayOnly(_selectedDay) == today)
             ? scopedEvents
             : const <AppEvent>[];
-        final upcoming = [...scopedAssessments]
-          ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+        final upcoming = [
+          ...scopedAssessments.where((a) => a.isActive),
+        ]..sort((a, b) => a.dueDate.compareTo(b.dueDate));
 
         return StreamBuilder<List<ReviewTopic>>(
           stream: _lectureLabSvc.streamTopics(),
@@ -550,6 +581,8 @@ class _AppShellState extends State<AppShell> {
           onOpacityChanged: themeController.setPanelOpacity,
           assessmentService: _assessSvc,
           subjectService: _subjectSvc,
+          lectureLabService: _lectureLabSvc,
+          noteService: _noteSvc,
           focusSubjectId: _subjectId,
           onOpenAssessment: (assessment) async {
             await Navigator.of(context).push(
@@ -558,6 +591,10 @@ class _AppShellState extends State<AppShell> {
                   panelOpacity: opacity,
                   assessment: assessment,
                   service: _assessSvc,
+                  studyTimeService: _studyTimeSvc,
+                  subjectService: _subjectSvc,
+                  lectureLabService: _lectureLabSvc,
+                  noteService: _noteSvc,
                 ),
               ),
             );
@@ -630,68 +667,15 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _promptAddTask(BuildContext context) async {
-    final controller = TextEditingController();
-    var urgency = TaskUrgency.normal;
     final result = await showDialog<(String, TaskUrgency)?>(
       context: context,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Add task'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'e.g., 45 min past paper Qs',
-                ),
-              ),
-              const SizedBox(height: 14),
-              const Text(
-                'Urgency',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-              ),
-              const SizedBox(height: 8),
-              SegmentedButton<TaskUrgency>(
-                segments: const [
-                  ButtonSegment(
-                    value: TaskUrgency.normal,
-                    label: Text('Normal'),
-                    icon: Icon(Icons.low_priority, size: 18),
-                  ),
-                  ButtonSegment(
-                    value: TaskUrgency.urgent,
-                    label: Text('Urgent'),
-                    icon: Icon(Icons.priority_high, size: 18),
-                  ),
-                ],
-                selected: {urgency},
-                onSelectionChanged: (v) =>
-                    setDialogState(() => urgency = v.first),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, null),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, (controller.text.trim(), urgency)),
-              child: const Text('Add'),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) => const AddTaskDialog(),
     );
 
     if (result == null || result.$1.isEmpty) return;
     await _taskSvc.addTask(
       result.$1,
       urgency: result.$2,
-      subjectId: _subjectId,
     );
   }
 }
@@ -946,12 +930,17 @@ class _IconRail extends StatelessWidget {
               const SizedBox(height: 8),
               for (final def in kShellSections)
                 _IconRailButton(
-                  tooltip: def.label,
+                  tooltip: sectionRequiresPro(def.section) &&
+                          !entitlementService.isPro
+                      ? '${def.label} · Pro'
+                      : def.label,
                   icon: openSection == def.section || selectedSection == def.section
                       ? def.selectedIcon
                       : def.icon,
                   selected: openSection == def.section ||
                       (openSection == null && selectedSection == def.section),
+                  locked: sectionRequiresPro(def.section) &&
+                      !entitlementService.isPro,
                   color: t.primaryAction,
                   muted: t.textMuted,
                   onTap: () => onToggleSection(def.section),
@@ -984,11 +973,13 @@ class _IconRailButton extends StatelessWidget {
     required this.color,
     required this.muted,
     required this.onTap,
+    this.locked = false,
   });
 
   final String tooltip;
   final IconData icon;
   final bool selected;
+  final bool locked;
   final Color color;
   final Color muted;
   final VoidCallback onTap;
@@ -1012,7 +1003,22 @@ class _IconRailButton extends StatelessWidget {
               color: selected ? color.withValues(alpha: 0.18) : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, size: 32, color: selected ? color : muted),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(icon, size: 32, color: selected ? color : muted),
+                if (locked)
+                  Positioned(
+                    right: 2,
+                    bottom: 2,
+                    child: Icon(
+                      Icons.lock,
+                      size: 12,
+                      color: selected ? color : muted,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1062,6 +1068,10 @@ class _SubRail extends StatelessWidget {
                   size: 22,
                 ),
                 title: Text(child.label),
+                trailing: pageRequiresPro(child.page) &&
+                        !entitlementService.isPro
+                    ? const ProLockBadge(compact: true)
+                    : null,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -1087,6 +1097,14 @@ class _BottomNav extends StatelessWidget {
   final ValueChanged<ShellSection> onToggleSection;
   final VoidCallback onSettings;
 
+  Widget _navIcon(IconData icon, {required bool locked}) {
+    if (!locked) return Icon(icon);
+    return Badge(
+      label: const Text('Pro'),
+      child: Icon(icon),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final selected = sectionForPage(page) ?? openSection;
@@ -1111,8 +1129,16 @@ class _BottomNav extends StatelessWidget {
         destinations: [
           for (final def in kShellSections)
             NavigationDestination(
-              icon: Icon(def.icon),
-              selectedIcon: Icon(def.selectedIcon),
+              icon: _navIcon(
+                def.icon,
+                locked: sectionRequiresPro(def.section) &&
+                    !entitlementService.isPro,
+              ),
+              selectedIcon: _navIcon(
+                def.selectedIcon,
+                locked: sectionRequiresPro(def.section) &&
+                    !entitlementService.isPro,
+              ),
               label: def.label,
             ),
           const NavigationDestination(

@@ -239,3 +239,36 @@ class TimeStepperTile extends StatelessWidget {
     );
   }
 }
+
+/// Study Grove scene wallpaper. Covers the viewport from the bottom edge so
+/// extra height crops the sky, not the ground — and never letterboxes.
+class GroveWallpaper extends StatelessWidget {
+  const GroveWallpaper({
+    super.key,
+    required this.asset,
+    this.alignment = Alignment.bottomCenter,
+  });
+
+  final String asset;
+  final Alignment alignment;
+
+  static const BoxFit fit = BoxFit.cover;
+  static const Alignment anchor = Alignment.bottomCenter;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ColoredBox(
+      color: scheme.surface,
+      child: Image.asset(
+        asset,
+        fit: fit,
+        alignment: alignment,
+        width: double.infinity,
+        height: double.infinity,
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+      ),
+    );
+  }
+}

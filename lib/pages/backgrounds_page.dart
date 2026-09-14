@@ -141,11 +141,7 @@ class BackgroundsPage extends StatelessWidget {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          Image.asset(
-                            asset,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.centerLeft,
-                          ),
+                          GroveWallpaper(asset: asset),
                           if (selected)
                             Positioned(
                               bottom: 6,
