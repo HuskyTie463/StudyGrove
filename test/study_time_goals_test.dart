@@ -20,6 +20,37 @@ void main() {
     expect(resolveWeekGoalHours(99, 10), 40);
   });
 
+  test('stored minutes win over hours, then the shared default', () {
+    expect(
+      resolveWeekGoalMinutes(
+        subjectHours: 6,
+        fallbackHours: 10,
+      ),
+      360,
+    );
+    expect(
+      resolveWeekGoalMinutes(
+        subjectMinutes: 150,
+        subjectHours: 6,
+        fallbackHours: 10,
+      ),
+      150,
+    );
+    expect(
+      resolveWeekGoalMinutes(fallbackHours: 10),
+      600,
+    );
+  });
+
+  test('weekly goal hours and minutes become minutes to store', () {
+    expect(parseWeekGoalMinutes(hours: 0, minutes: 0), isNull);
+    expect(parseWeekGoalMinutes(hours: -1, minutes: 10), isNull);
+    expect(parseWeekGoalMinutes(hours: 0, minutes: 25), 25);
+    expect(parseWeekGoalMinutes(hours: 4, minutes: 30), 270);
+    expect(parseWeekGoalMinutes(hours: 2, minutes: 0), 120);
+    expect(parseWeekGoalMinutes(hours: 41, minutes: 0), 40 * 60);
+  });
+
   test('All subjects goal is the sum of each subject goal', () {
     expect(combinedWeekGoalHours(const [], 10), 10);
     expect(combinedWeekGoalHours(const [null, null], 10), 20);
@@ -54,6 +85,21 @@ void main() {
     expect(parseManualStudyMinutes(hours: 25, minutes: 0), 24 * 60);
   });
 
+  test('removing time never goes below zero and asks before an hour', () {
+    expect(clampRemovedStudyMinutes(0, 20), 0);
+    expect(clampRemovedStudyMinutes(40, 0), 0);
+    expect(clampRemovedStudyMinutes(40, 15), 15);
+    expect(clampRemovedStudyMinutes(40, 90), 40);
+    expect(remainingStudyMinutes(40, 15), 25);
+    expect(remainingStudyMinutes(40, 90), 0);
+    expect(shouldConfirmStudyTimeRemoval(59), isFalse);
+    expect(shouldConfirmStudyTimeRemoval(60), isTrue);
+    final today = DateTime(2026, 9, 14);
+    expect(formatLoggedStudyDay('2026-09-14', now: today), 'Today');
+    expect(formatLoggedStudyDay('2026-09-13', now: today), 'Yesterday');
+    expect(formatLoggedStudyDay('2026-09-11', now: today), 'Fri 11/9');
+  });
+
   test('Subject stores kind and weekly hours for Time to read', () {
     final maths = Subject(
       id: 'm',
@@ -71,6 +117,14 @@ void main() {
     expect(piano.isHobby, isTrue);
     expect(resolveWeekGoalHours(maths.weekGoalHours, 10), 6);
     expect(resolveWeekGoalHours(piano.weekGoalHours, 10), 10);
+    expect(
+      resolveWeekGoalMinutes(
+        subjectMinutes: 90,
+        subjectHours: piano.weekGoalHours,
+        fallbackHours: 10,
+      ),
+      90,
+    );
     expect(
       combinedWeekGoalHours(
         [maths.weekGoalHours, piano.weekGoalHours],

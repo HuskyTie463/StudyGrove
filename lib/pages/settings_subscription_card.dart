@@ -22,6 +22,10 @@ class SettingsSubscriptionCard extends StatelessWidget {
         studyAiSettings,
       ]),
       builder: (context, _) {
+        final monthly = entitlementService.priceLabel(
+          entitlementService.unlockProductId,
+          SubscriptionCatalog.monthlyLabel,
+        );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -30,7 +34,8 @@ class SettingsSubscriptionCard extends StatelessWidget {
             Text(
               entitlementService.isPro
                   ? 'You are on ${entitlementService.planLabel}.'
-                  : 'You are on Free. Home, Plan, and Subjects are open. Study and Study AI need Pro.',
+                  : 'You are on Free. Home, Plan, and Subjects are open. '
+                      'Study and Study AI need Pro ($monthly).',
               style: TextStyle(color: t.textMuted, height: 1.45, fontSize: 13),
             ),
             SizedBox(height: t.gap(1.25)),
@@ -62,17 +67,17 @@ class SettingsSubscriptionCard extends StatelessWidget {
               children: [
                 if (!entitlementService.isPro)
                   SgPrimaryButton(
-                    label: 'See Pro plans',
+                    label: 'Subscribe · $monthly',
                     onPressed: () => showStudyGrovePaywall(context),
                   ),
                 SgSecondaryButton(
-                  label: 'Restore purchases',
+                  label: 'Restore',
                   onPressed: entitlementService.busy
                       ? null
                       : entitlementService.restorePurchases,
                 ),
                 SgSecondaryButton(
-                  label: 'Manage subscription',
+                  label: 'Manage',
                   onPressed: openManageSubscriptions,
                 ),
               ],
@@ -85,8 +90,9 @@ class SettingsSubscriptionCard extends StatelessWidget {
               ),
               SizedBox(height: t.gap(0.5)),
               Text(
-                'Debug and Windows builds are Pro so you can use Study. '
-                'Force Free only to test locks. Off in release store builds.',
+                'Debug builds are Pro so you can use Study. '
+                'Force Free only to test locks. Release Microsoft Store builds '
+                'need the monthly subscription — they do not auto-unlock.',
                 style: TextStyle(color: t.textMuted, fontSize: 12, height: 1.4),
               ),
               SwitchListTile(

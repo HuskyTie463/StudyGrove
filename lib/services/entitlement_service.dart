@@ -7,40 +7,59 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'subscription_catalog.dart';
+import 'windows_store_iap.dart';
 
 enum EntitlementPlan { free, pro }
 
-/// Free vs Pro. Store purchases on iOS / Android / macOS. Windows and debug
-/// builds are Pro so the owner's daily driver is not locked out.
+/// Free vs Pro.
+///
+/// iOS / Android / macOS: Apple or Play IAP (`pro_monthly`).
+/// Windows release: Microsoft Store add-on `studygrove_pro_monthly`.
+/// Debug and `STUDY_GROVE_UNLOCK_PRO` stay Pro for local work. Release
+/// Microsoft Store builds do not auto-unlock.
 class EntitlementService extends ChangeNotifier {
-  EntitlementService({InAppPurchase? store}) : _store = store;
+  EntitlementService({
+    InAppPurchase? store,
+    WindowsStoreIap? windowsStore,
+  })  : _store = store,
+        _windowsStore = windowsStore;
 
   final InAppPurchase? _store;
+  final WindowsStoreIap? _windowsStore;
 
   InAppPurchase get _iap => _store ?? InAppPurchase.instance;
+  WindowsStoreIap get _winIap => _windowsStore ?? WindowsStoreIap.instance;
 
   String? _uid;
   var _storePro = false;
   var _forceFree = false;
   var _ready = false;
   var _storeAvailable = false;
+  var _windowsProductFound = false;
   var _busy = false;
   String? _activeProductId;
   String? _status;
+  String? _windowsPrice;
   List<ProductDetails> products = const [];
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
 
   bool get ready => _ready;
   bool get busy => _busy;
   bool get storeAvailable => _storeAvailable;
+  bool get windowsAddOnListed => _windowsProductFound;
   String? get activeProductId => _activeProductId;
   String? get status => _status;
+
+  bool get _isWindowsDesktop => !kIsWeb && Platform.isWindows;
+
+  String get unlockProductId => _isWindowsDesktop
+      ? SubscriptionCatalog.windowsMonthlyProductId
+      : SubscriptionCatalog.monthlyProductId;
 
   bool get isPro => EntitlementPolicy.isPro(
         debugMode: kDebugMode,
         forceFree: _forceFree,
         unlockDefine: EntitlementPolicy.unlockProDefine,
-        isWindows: !kIsWeb && Platform.isWindows,
         isLinux: !kIsWeb && Platform.isLinux,
         storePro: _storePro,
       );
@@ -49,15 +68,12 @@ class EntitlementService extends ChangeNotifier {
 
   String get planLabel {
     if (!isPro) return 'Free';
-    if (_activeProductId == SubscriptionCatalog.annualProductId) {
-      return 'Pro (annual)';
-    }
-    if (_activeProductId == SubscriptionCatalog.monthlyProductId) {
+    if (_activeProductId == SubscriptionCatalog.monthlyProductId ||
+        _activeProductId == SubscriptionCatalog.windowsMonthlyProductId) {
       return 'Pro (monthly)';
     }
     if (_storePro) return 'Pro';
     if (kDebugMode) return 'Pro (debug)';
-    if (!kIsWeb && Platform.isWindows) return 'Pro (Windows)';
     return 'Pro';
   }
 
@@ -73,6 +89,10 @@ class EntitlementService extends ChangeNotifier {
   }
 
   String priceLabel(String id, String fallback) {
+    final windowsPrice = _windowsPrice;
+    if (_isWindowsDesktop && windowsPrice != null && windowsPrice.isNotEmpty) {
+      return windowsPrice;
+    }
     return product(id)?.price ?? fallback;
   }
 
@@ -98,8 +118,10 @@ class EntitlementService extends ChangeNotifier {
     _forceFree = false;
     _ready = false;
     _storeAvailable = false;
+    _windowsProductFound = false;
     _activeProductId = null;
     _status = null;
+    _windowsPrice = null;
     products = const [];
     notifyListeners();
   }
@@ -115,7 +137,13 @@ class EntitlementService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> unlockPro() => buy(unlockProductId);
+
   Future<void> buy(String productId) async {
+    if (_isWindowsDesktop) {
+      await _buyWindows();
+      return;
+    }
     final details = product(productId);
     if (details == null) {
       _status = 'The store has not listed that plan yet. Try Restore, or check '
@@ -142,6 +170,10 @@ class EntitlementService extends ChangeNotifier {
   }
 
   Future<void> restorePurchases() async {
+    if (_isWindowsDesktop) {
+      await _restoreWindows();
+      return;
+    }
     _busy = true;
     _status = null;
     notifyListeners();
@@ -159,6 +191,11 @@ class EntitlementService extends ChangeNotifier {
   }
 
   Future<void> _startStore() async {
+    if (_isWindowsDesktop) {
+      await _refreshWindowsEntitlement(updateStatus: false);
+      notifyListeners();
+      return;
+    }
     try {
       _storeAvailable = await _iap.isAvailable();
     } catch (e) {
@@ -195,6 +232,87 @@ class EntitlementService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _buyWindows() async {
+    _busy = true;
+    _status = null;
+    notifyListeners();
+    try {
+      final result = await _winIap.purchase();
+      await _applyWindowsSnapshot(result, fromPurchase: true);
+    } catch (e) {
+      _status = SubscriptionCatalog.windowsAddOnNotListedMessage;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _restoreWindows() async {
+    _busy = true;
+    _status = null;
+    notifyListeners();
+    try {
+      await _refreshWindowsEntitlement(updateStatus: true);
+    } catch (e) {
+      _status = 'Restore failed. $e';
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _refreshWindowsEntitlement({required bool updateStatus}) async {
+    final result = await _winIap.query();
+    await _applyWindowsSnapshot(result, fromPurchase: false);
+    if (!updateStatus) return;
+    if (result.owned) {
+      _status = 'Purchases restored. You are on $planLabel.';
+    } else if (result.showNotListedMessage) {
+      _status = SubscriptionCatalog.windowsAddOnNotListedMessage;
+    } else {
+      _status = 'No Pro subscription found for this Microsoft account.';
+    }
+  }
+
+  Future<void> _applyWindowsSnapshot(
+    WindowsStoreSnapshot result, {
+    required bool fromPurchase,
+  }) async {
+    _storeAvailable = result.available;
+    _windowsProductFound = result.productFound;
+    if (result.price != null && result.price!.isNotEmpty) {
+      _windowsPrice = result.price;
+    }
+    if (result.owned) {
+      await _setStorePro(
+        productId: SubscriptionCatalog.windowsMonthlyProductId,
+        purchased: true,
+      );
+      if (fromPurchase) {
+        _status = result.status == 'already_purchased'
+            ? 'This Microsoft account already has Pro.'
+            : 'You are on Pro.';
+      }
+      return;
+    }
+    if (result.available && result.productFound) {
+      await _setStorePro(
+        productId: SubscriptionCatalog.windowsMonthlyProductId,
+        purchased: false,
+      );
+    }
+    if (!fromPurchase) return;
+    if (result.status == 'canceled') {
+      _status = 'Purchase cancelled.';
+    } else if (result.showNotListedMessage) {
+      _status = SubscriptionCatalog.windowsAddOnNotListedMessage;
+    } else {
+      _status = (result.message != null && result.message!.isNotEmpty)
+          ? result.message
+          : SubscriptionCatalog.windowsAddOnNotListedMessage;
+    }
+  }
+
   Future<void> _onPurchases(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
       if (purchase.status == PurchaseStatus.pending) {
@@ -205,7 +323,7 @@ class EntitlementService extends ChangeNotifier {
         _status = 'Purchase cancelled.';
       } else if (purchase.status == PurchaseStatus.purchased ||
           purchase.status == PurchaseStatus.restored) {
-        if (SubscriptionCatalog.productIds.contains(purchase.productID)) {
+        if (SubscriptionCatalog.grantsPro(purchase.productID)) {
           await _setStorePro(
             productId: purchase.productID,
             purchased: true,
@@ -262,7 +380,7 @@ class EntitlementService extends ChangeNotifier {
       if (data == null) return;
       final productId = data['productId'] as String?;
       if (productId != null &&
-          SubscriptionCatalog.productIds.contains(productId) &&
+          SubscriptionCatalog.grantsPro(productId) &&
           !_storePro) {
         // Cache only. Store platforms still require a real IAP receipt.
         _activeProductId ??= productId;

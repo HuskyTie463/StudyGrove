@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../config/background_assets.dart';
@@ -113,6 +114,11 @@ class BackgroundsPage extends StatelessWidget {
               SizedBox(height: t.gap(2)),
               Text('Wallpaper', style: Theme.of(context).textTheme.titleMedium),
               SizedBox(height: t.gap(1)),
+              Text(
+                'Upload a photo or pick a scene. Yours stay on this device.',
+                style: TextStyle(color: t.textMuted, fontSize: 13),
+              ),
+              SizedBox(height: t.gap(1)),
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -122,39 +128,30 @@ class BackgroundsPage extends StatelessWidget {
                   crossAxisSpacing: 10,
                   childAspectRatio: 1.2,
                 ),
-                itemCount: dashboardBackgroundAssets.length,
+                itemCount: 1 +
+                    themeController.customBackgrounds.length +
+                    dashboardBackgroundAssets.length,
                 itemBuilder: (_, i) {
-                  final asset = dashboardBackgroundAssets[i];
-                  final selected = asset == themeController.backgroundAsset;
-                  return InkWell(
+                  if (i == 0) {
+                    return _UploadWallpaperTile(
+                      onTap: () => _uploadWallpaper(context),
+                    );
+                  }
+                  final customCount = themeController.customBackgrounds.length;
+                  final customIndex = i - 1;
+                  if (customIndex < customCount) {
+                    final path = themeController.customBackgrounds[customIndex];
+                    return _WallpaperTile(
+                      asset: path,
+                      selected: path == themeController.backgroundAsset,
+                      onTap: () => themeController.setBackground(path),
+                    );
+                  }
+                  final asset = dashboardBackgroundAssets[customIndex - customCount];
+                  return _WallpaperTile(
+                    asset: asset,
+                    selected: asset == themeController.backgroundAsset,
                     onTap: () => themeController.setBackground(asset),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: selected ? t.primaryAction : t.border,
-                          width: selected ? 3 : 1,
-                        ),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          GroveWallpaper(asset: asset),
-                          if (selected)
-                            Positioned(
-                              bottom: 6,
-                              right: 6,
-                              child: Icon(
-                                Icons.check_circle,
-                                color: t.primaryAction,
-                                size: 22,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
                   );
                 },
               ),
@@ -165,6 +162,103 @@ class BackgroundsPage extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+Future<void> _uploadWallpaper(BuildContext context) async {
+  final picked = await FilePicker.platform.pickFiles(
+    type: FileType.image,
+    allowMultiple: false,
+  );
+  final path = picked?.files.single.path;
+  if (path == null || path.isEmpty) return;
+  final ok = await themeController.importCustomBackground(path);
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        ok ? 'Wallpaper saved on this device.' : "Couldn't use that photo.",
+      ),
+    ),
+  );
+}
+
+class _UploadWallpaperTile extends StatelessWidget {
+  const _UploadWallpaperTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: t.border),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_photo_alternate_outlined, color: t.textMuted),
+            const SizedBox(height: 6),
+            Text(
+              'Upload',
+              style: TextStyle(fontSize: 12, color: t.textMuted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WallpaperTile extends StatelessWidget {
+  const _WallpaperTile({
+    required this.asset,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String asset;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? t.primaryAction : t.border,
+            width: selected ? 3 : 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            GroveWallpaper(asset: asset),
+            if (selected)
+              Positioned(
+                bottom: 6,
+                right: 6,
+                child: Icon(
+                  Icons.check_circle,
+                  color: t.primaryAction,
+                  size: 22,
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

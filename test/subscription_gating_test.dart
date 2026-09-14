@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_organiser/services/subscription_catalog.dart';
+import 'package:flutter_organiser/services/windows_store_iap.dart';
 import 'package:flutter_organiser/ui/shell_nav.dart';
 
 void main() {
@@ -37,7 +38,6 @@ void main() {
           debugMode: false,
           forceFree: false,
           unlockDefine: false,
-          isWindows: false,
           isLinux: false,
           storePro: false,
         ),
@@ -48,7 +48,6 @@ void main() {
           debugMode: false,
           forceFree: false,
           unlockDefine: false,
-          isWindows: false,
           isLinux: false,
           storePro: true,
         ),
@@ -56,13 +55,12 @@ void main() {
       );
     });
 
-    test('debug and Windows are Pro unless Force Free', () {
+    test('debug is Pro unless Force Free', () {
       expect(
         EntitlementPolicy.isPro(
           debugMode: true,
           forceFree: false,
           unlockDefine: false,
-          isWindows: false,
           isLinux: false,
           storePro: false,
         ),
@@ -73,9 +71,21 @@ void main() {
           debugMode: true,
           forceFree: true,
           unlockDefine: false,
-          isWindows: false,
           isLinux: false,
           storePro: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('release Windows needs the Microsoft Store add-on', () {
+      expect(
+        EntitlementPolicy.isPro(
+          debugMode: false,
+          forceFree: false,
+          unlockDefine: false,
+          isLinux: false,
+          storePro: false,
         ),
         isFalse,
       );
@@ -84,9 +94,8 @@ void main() {
           debugMode: false,
           forceFree: false,
           unlockDefine: false,
-          isWindows: true,
           isLinux: false,
-          storePro: false,
+          storePro: true,
         ),
         isTrue,
       );
@@ -98,7 +107,6 @@ void main() {
           debugMode: false,
           forceFree: false,
           unlockDefine: true,
-          isWindows: false,
           isLinux: false,
           storePro: false,
         ),
@@ -106,13 +114,24 @@ void main() {
       );
     });
 
-    test('store IAP is required on release iOS Android macOS', () {
+    test('store IAP is required on release iOS Android macOS Windows', () {
       expect(
         EntitlementPolicy.storeEnforcesIap(
           debugMode: false,
           isIOS: true,
           isAndroid: false,
           isMacOS: false,
+          isWindows: false,
+        ),
+        isTrue,
+      );
+      expect(
+        EntitlementPolicy.storeEnforcesIap(
+          debugMode: false,
+          isIOS: false,
+          isAndroid: false,
+          isMacOS: false,
+          isWindows: true,
         ),
         isTrue,
       );
@@ -122,6 +141,7 @@ void main() {
           isIOS: true,
           isAndroid: false,
           isMacOS: false,
+          isWindows: true,
         ),
         isFalse,
       );
@@ -157,12 +177,42 @@ void main() {
       expect(AiAllowanceLogic.nextReset(DateTime(2026, 9, 14)), DateTime(2026, 10, 1));
     });
 
-    test('catalog prices and SKUs', () {
+    test('catalog is monthly only with Windows add-on identity', () {
       expect(SubscriptionCatalog.monthlyProductId, 'pro_monthly');
-      expect(SubscriptionCatalog.annualProductId, 'pro_annual');
-      expect(SubscriptionCatalog.monthlyListPriceUsd, 4.99);
-      expect(SubscriptionCatalog.annualListPriceUsd, 39.99);
+      expect(SubscriptionCatalog.windowsMonthlyProductId, 'studygrove_pro_monthly');
+      expect(SubscriptionCatalog.windowsStoreListingId, '9PP0RQTCQ47R');
+      expect(SubscriptionCatalog.monthlyListPriceUsd, 4.95);
+      expect(SubscriptionCatalog.monthlyLabel, r'US$4.95 / month');
       expect(SubscriptionCatalog.monthlyAiUses, 40);
+      expect(SubscriptionCatalog.productIds, {'pro_monthly'});
+      expect(
+        SubscriptionCatalog.recognizedProductIds,
+        {'pro_monthly', 'studygrove_pro_monthly'},
+      );
+      expect(SubscriptionCatalog.grantsPro('pro_monthly'), isTrue);
+      expect(SubscriptionCatalog.grantsPro('studygrove_pro_monthly'), isTrue);
+      expect(SubscriptionCatalog.grantsPro('pro_annual'), isFalse);
+      expect(SubscriptionCatalog.windowsManageSubscriptionsUri,
+          'ms-windows-store://account');
+    });
+
+    test('Windows store snapshot maps purchase and restore payloads', () {
+      final owned = WindowsStoreSnapshot.fromMap({
+        'available': true,
+        'owned': true,
+        'productFound': true,
+        'price': r'US$4.95',
+      });
+      expect(owned.owned, isTrue);
+      expect(owned.showNotListedMessage, isFalse);
+      expect(owned.price, r'US$4.95');
+
+      final missing = WindowsStoreSnapshot.fromMap({
+        'available': false,
+        'owned': false,
+        'productFound': false,
+      });
+      expect(missing.showNotListedMessage, isTrue);
     });
   });
 }

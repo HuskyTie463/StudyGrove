@@ -1,6 +1,11 @@
 // lib/ui/shared_ui.dart
+import 'dart:io';
 import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../config/background_assets.dart';
 
 class FrostPanel extends StatelessWidget {
   const FrostPanel({
@@ -258,9 +263,30 @@ class GroveWallpaper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return ColoredBox(
-      color: scheme.surface,
-      child: Image.asset(
+    final fallback = ColoredBox(color: scheme.surface);
+    Widget image;
+    if (isCustomWallpaperPath(asset)) {
+      if (kIsWeb || !_customWallpaperFileExists(asset)) {
+        image = Center(
+          child: Icon(
+            Icons.image_outlined,
+            color: scheme.onSurface.withValues(alpha: 0.38),
+          ),
+        );
+      } else {
+        image = Image.file(
+          File(asset),
+          fit: fit,
+          alignment: alignment,
+          width: double.infinity,
+          height: double.infinity,
+          filterQuality: FilterQuality.medium,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => fallback,
+        );
+      }
+    } else {
+      image = Image.asset(
         asset,
         fit: fit,
         alignment: alignment,
@@ -268,7 +294,17 @@ class GroveWallpaper extends StatelessWidget {
         height: double.infinity,
         filterQuality: FilterQuality.medium,
         gaplessPlayback: true,
-      ),
-    );
+        errorBuilder: (_, _, _) => fallback,
+      );
+    }
+    return ColoredBox(color: scheme.surface, child: image);
+  }
+}
+
+bool _customWallpaperFileExists(String path) {
+  try {
+    return File(path).existsSync();
+  } catch (_) {
+    return false;
   }
 }

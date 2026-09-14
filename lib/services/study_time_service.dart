@@ -24,19 +24,29 @@ class StudyTimeService extends ChangeNotifier with WidgetsBindingObserver {
 
   int get weekGoalMinutes => weekGoalHours * 60;
 
-  int goalHoursFor(Subject subject) =>
-      resolveWeekGoalHours(subject.weekGoalHours, weekGoalHours);
-
-  int goalMinutesFor(Subject subject) => goalHoursFor(subject) * 60;
-
-  int combinedGoalHours(Iterable<Subject> subjects) =>
-      combinedWeekGoalHours(
-        subjects.map((s) => s.weekGoalHours),
-        weekGoalHours,
+  int goalMinutesFor(Subject subject) => resolveWeekGoalMinutes(
+        subjectMinutes: subject.weekGoalMinutes,
+        subjectHours: subject.weekGoalHours,
+        fallbackHours: weekGoalHours,
       );
 
-  int combinedGoalMinutes(Iterable<Subject> subjects) =>
-      combinedGoalHours(subjects) * 60;
+  int goalHoursFor(Subject subject) {
+    final minutes = goalMinutesFor(subject);
+    final hours = minutes ~/ 60;
+    return hours < 1 ? 1 : hours.clamp(1, 40);
+  }
+
+  int combinedGoalMinutes(Iterable<Subject> subjects) {
+    final list = subjects.toList();
+    if (list.isEmpty) return weekGoalMinutes;
+    return list.fold(0, (n, s) => n + goalMinutesFor(s));
+  }
+
+  int combinedGoalHours(Iterable<Subject> subjects) {
+    final minutes = combinedGoalMinutes(subjects);
+    if (minutes <= 0) return weekGoalHours;
+    return (minutes / 60).ceil();
+  }
 
   Future<void> _loadGoal() async {
     final prefs = await SharedPreferences.getInstance();
@@ -101,6 +111,38 @@ class StudyTimeService extends ChangeNotifier with WidgetsBindingObserver {
       'lastSource': source,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  /// Subtracts logged minutes for a subject on one day. Never goes below 0.
+  /// Returns how many minutes were actually removed.
+  Future<int> removeMinutes({
+    required String subjectId,
+    required int minutes,
+    String? forDayKey,
+  }) async {
+    if (minutes <= 0 || subjectId.isEmpty) return 0;
+    final key = forDayKey ?? dayKey(DateTime.now());
+    final ref = _daily.doc('${key}_$subjectId');
+    final taken = await _db.runTransaction<int>((tx) async {
+      final snap = await tx.get(ref);
+      final current = (snap.data()?['minutes'] as num?)?.toInt() ?? 0;
+      final removed = clampRemovedStudyMinutes(current, minutes);
+      if (removed <= 0) return 0;
+      final next = remainingStudyMinutes(current, removed);
+      if (next <= 0) {
+        tx.delete(ref);
+      } else {
+        tx.set(ref, {
+          'subjectId': subjectId,
+          'dayKey': key,
+          'minutes': next,
+          'lastSource': 'adjust',
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+      return removed;
+    });
+    return taken;
   }
 
   Future<void> startLive(String subjectId) async {
@@ -285,10 +327,27 @@ int resolveWeekGoalHours(int? subjectHours, int fallbackHours) {
   return (subjectHours ?? fallbackHours).clamp(1, 40);
 }
 
+int resolveWeekGoalMinutes({
+  int? subjectMinutes,
+  int? subjectHours,
+  required int fallbackHours,
+}) {
+  if (subjectMinutes != null) return subjectMinutes.clamp(1, 40 * 60);
+  return resolveWeekGoalHours(subjectHours, fallbackHours) * 60;
+}
+
 int combinedWeekGoalHours(Iterable<int?> subjectHours, int fallbackHours) {
   final list = subjectHours.toList();
   if (list.isEmpty) return fallbackHours.clamp(1, 40);
   return list.fold(0, (n, hours) => n + resolveWeekGoalHours(hours, fallbackHours));
+}
+
+/// Hours + leftover minutes for a weekly Time goal. Null when nothing valid.
+int? parseWeekGoalMinutes({required int hours, required int minutes}) {
+  if (hours < 0 || minutes < 0) return null;
+  final total = hours * 60 + minutes;
+  if (total < 1) return null;
+  return total.clamp(1, 40 * 60);
 }
 
 int subjectMinutesFromSession(int seconds) {
@@ -369,6 +428,37 @@ int? parseManualStudyMinutes({required int hours, required int minutes}) {
   final total = hours * 60 + minutes;
   if (total < 1) return null;
   return total.clamp(1, 24 * 60);
+}
+
+/// How many minutes can actually come off a day's log.
+int clampRemovedStudyMinutes(int current, int requested) {
+  if (current <= 0 || requested <= 0) return 0;
+  return requested > current ? current : requested;
+}
+
+int remainingStudyMinutes(int current, int removed) {
+  if (current <= 0 || removed <= 0) return current < 0 ? 0 : current;
+  final next = current - removed;
+  return next < 0 ? 0 : next;
+}
+
+/// Ask before taking an hour or more off a subject.
+bool shouldConfirmStudyTimeRemoval(int minutes) => minutes >= 60;
+
+/// Today / Yesterday / weekday for a `yyyy-mm-dd` day key.
+String formatLoggedStudyDay(String key, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  if (key == dayKey(n)) return 'Today';
+  if (key == dayKey(n.subtract(const Duration(days: 1)))) return 'Yesterday';
+  final parts = key.split('-');
+  if (parts.length != 3) return key;
+  final y = int.tryParse(parts[0]);
+  final m = int.tryParse(parts[1]);
+  final d = int.tryParse(parts[2]);
+  if (y == null || m == null || d == null) return key;
+  final date = DateTime(y, m, d);
+  const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  return '${names[date.weekday - 1]} $d/${date.month}';
 }
 
 /// Logged minutes ÷ weekly goal. Unclamped so overtime can exceed 1.0.

@@ -83,6 +83,7 @@ class Subject {
     this.code,
     this.kind = SubjectKind.study,
     this.weekGoalHours,
+    this.weekGoalMinutes,
   });
 
   final String id;
@@ -91,6 +92,8 @@ class Subject {
   final int colorValue;
   final SubjectKind kind;
   final int? weekGoalHours;
+  /// Total weekly goal in minutes when set. Preferred over [weekGoalHours].
+  final int? weekGoalMinutes;
 
   Color get color => Color(colorValue);
 

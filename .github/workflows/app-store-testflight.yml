@@ -230,9 +230,9 @@ jobs:
         run: |
           set -euo pipefail
           BUILD_NUMBER="${{ github.run_number }}"
-          # Apple already processed 1.0.6 (2), (3), and (4). Never reuse those.
-          if [ "$BUILD_NUMBER" -lt 5 ]; then
-            BUILD_NUMBER=5
+          # Apple already processed 1.0.6 (2)–(6). 1.0.8 needs a higher CFBundleVersion.
+          if [ "$BUILD_NUMBER" -lt 7 ]; then
+            BUILD_NUMBER=7
           fi
           echo "CFBundleVersion=$BUILD_NUMBER"
           DART_DEFINES=()
@@ -499,6 +499,10 @@ jobs:
         run: |
           set -euo pipefail
           BUILD_NUMBER="${{ github.run_number }}"
+          # Apple already processed 1.0.6 (2)–(6). 1.0.8 needs a higher CFBundleVersion.
+          if [ "$BUILD_NUMBER" -lt 7 ]; then
+            BUILD_NUMBER=7
+          fi
           DART_DEFINES=()
           if [ -n "${STUDY_AI_PROXY_URL:-}" ]; then
             DART_DEFINES+=(--dart-define="STUDY_AI_PROXY_URL=$STUDY_AI_PROXY_URL")

@@ -37,13 +37,10 @@ class PaywallSheet extends StatelessWidget {
       animation: Listenable.merge([entitlementService, aiAllowanceService]),
       builder: (context, _) {
         final monthly = entitlementService.priceLabel(
-          SubscriptionCatalog.monthlyProductId,
+          entitlementService.unlockProductId,
           SubscriptionCatalog.monthlyLabel,
         );
-        final annual = entitlementService.priceLabel(
-          SubscriptionCatalog.annualProductId,
-          SubscriptionCatalog.annualLabel,
-        );
+        final onWindows = defaultTargetPlatform == TargetPlatform.windows;
         return SafeArea(
           child: Padding(
             padding: EdgeInsets.fromLTRB(t.gap(2.5), 0, t.gap(2.5), t.gap(2.5)),
@@ -74,10 +71,10 @@ class PaywallSheet extends StatelessWidget {
                     style: TextStyle(color: t.textMuted, height: 1.45),
                   ),
                   SizedBox(height: t.gap(2)),
-                  _PlanCard(
+                  const _PlanCard(
                     title: 'Free',
                     price: 'Included',
-                    points: const [
+                    points: [
                       'Home — Dashboard, Time, Notes',
                       'Plan — Planner, Calendar, Weekly Planner, Assessments',
                       'Subjects',
@@ -86,20 +83,40 @@ class PaywallSheet extends StatelessWidget {
                   SizedBox(height: t.gap(1.5)),
                   _PlanCard(
                     title: 'Pro',
-                    price: '$monthly or $annual',
+                    price: monthly,
                     highlight: true,
                     points: const [
                       'Everything in Free',
                       'Lecture Lab, Review, Voice Chat, Study Roulette, Pomodoro',
                       'Study AI — extract, quizzes, flashcards, listen, voice',
-                      '${SubscriptionCatalog.monthlyAiUses} Study AI uses / month (same on monthly and annual)',
+                      '${SubscriptionCatalog.monthlyAiUses} Study AI uses / month',
                     ],
                   ),
-                  SizedBox(height: t.gap(1)),
-                  Text(
-                    SubscriptionCatalog.annualVsMonthlyCopy,
-                    style: TextStyle(color: t.textMuted, height: 1.4, fontSize: 13),
-                  ),
+                  if (onWindows) ...[
+                    SizedBox(height: t.gap(1)),
+                    Text(
+                      'Unlock Pro opens the Microsoft Store checkout for the '
+                      'monthly subscription. Manage it from your Store account.',
+                      style: TextStyle(
+                        color: t.textMuted,
+                        height: 1.4,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                  if (onWindows &&
+                      !entitlementService.isPro &&
+                      !entitlementService.windowsAddOnListed) ...[
+                    SizedBox(height: t.gap(1)),
+                    Text(
+                      SubscriptionCatalog.windowsAddOnNotListedMessage,
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        height: 1.4,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                   if (entitlementService.status != null) ...[
                     SizedBox(height: t.gap(1)),
                     Text(
@@ -113,34 +130,22 @@ class PaywallSheet extends StatelessWidget {
                     SgPrimaryButton(
                       label: entitlementService.busy
                           ? 'Working…'
-                          : 'Go Pro monthly · $monthly',
+                          : 'Unlock Pro · $monthly',
                       expanded: true,
                       onPressed: entitlementService.busy
                           ? null
-                          : () => entitlementService
-                              .buy(SubscriptionCatalog.monthlyProductId),
-                    ),
-                    SizedBox(height: t.gap(1)),
-                    SgPrimaryButton(
-                      label: entitlementService.busy
-                          ? 'Working…'
-                          : 'Go Pro annual · $annual',
-                      expanded: true,
-                      onPressed: entitlementService.busy
-                          ? null
-                          : () => entitlementService
-                              .buy(SubscriptionCatalog.annualProductId),
+                          : entitlementService.unlockPro,
                     ),
                     SizedBox(height: t.gap(1)),
                     SgSecondaryButton(
-                      label: 'Restore purchases',
+                      label: 'Restore',
                       onPressed: entitlementService.busy
                           ? null
                           : entitlementService.restorePurchases,
                     ),
                   ] else
                     Text(
-                      'Annual and monthly include the same ${SubscriptionCatalog.monthlyAiUses} uses. '
+                      'Pro includes ${SubscriptionCatalog.monthlyAiUses} Study AI uses each month. '
                       'Wait for the reset date, or use your own key in Settings → Advanced.',
                       style: TextStyle(color: t.textMuted, height: 1.45),
                     ),
@@ -217,10 +222,13 @@ class _PlanCard extends StatelessWidget {
 }
 
 Future<void> openManageSubscriptions() async {
-  final uri = defaultTargetPlatform == TargetPlatform.android
-      ? Uri.parse(
-          'https://play.google.com/store/account/subscriptions?package=com.adaracurry.studygrove',
-        )
-      : Uri.parse('https://apps.apple.com/account/subscriptions');
+  final uri = switch (defaultTargetPlatform) {
+    TargetPlatform.android => Uri.parse(
+        'https://play.google.com/store/account/subscriptions?package=com.adaracurry.studygrove',
+      ),
+    TargetPlatform.windows =>
+      Uri.parse(SubscriptionCatalog.windowsManageSubscriptionsUri),
+    _ => Uri.parse('https://apps.apple.com/account/subscriptions'),
+  };
   await launchUrl(uri, mode: LaunchMode.externalApplication);
 }

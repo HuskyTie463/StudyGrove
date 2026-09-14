@@ -25,6 +25,17 @@ void main() {
     expect(image.fit, isNot(BoxFit.contain));
   });
 
+  test('custom wallpaper paths are local files, not bundled scenes', () {
+    expect(isBundledBackgroundAsset(kDefaultBackgroundAsset), isTrue);
+    expect(isCustomWallpaperPath(kDefaultBackgroundAsset), isFalse);
+    expect(isCustomWallpaperPath('assets/backgrounds/bg_01.png'), isFalse);
+    expect(isCustomWallpaperPath(kCustomWallpaperRemoteMarker), isFalse);
+    expect(
+      isCustomWallpaperPath(r'C:\Users\me\wallpapers\custom_1.jpg'),
+      isTrue,
+    );
+  });
+
   testWidgets('Enter submits a trimmed to-do from the composer', (tester) async {
     (String, TaskUrgency)? result;
     await tester.pumpWidget(

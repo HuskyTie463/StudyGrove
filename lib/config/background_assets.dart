@@ -1,6 +1,22 @@
 /// Default dashboard background for new accounts (fern — 2nd picker option).
 const String kDefaultBackgroundAsset = 'assets/backgrounds/fern.png';
 
+/// Firestore marker when the current wallpaper is a local photo, not a scene.
+const String kCustomWallpaperRemoteMarker = 'custom:local';
+
+/// Built-in scene from [dashboardBackgroundAssets].
+bool isBundledBackgroundAsset(String path) =>
+    dashboardBackgroundAssets.contains(path);
+
+/// Local photo path (copied into app documents). Not an `assets/` scene.
+bool isCustomWallpaperPath(String path) {
+  final trimmed = path.trim();
+  if (trimmed.isEmpty) return false;
+  if (trimmed == kCustomWallpaperRemoteMarker) return false;
+  if (trimmed.startsWith('assets/')) return false;
+  return !dashboardBackgroundAssets.contains(trimmed);
+}
+
 /// Dashboard / blend-mode background images.
 const List<String> dashboardBackgroundAssets = [
   'assets/backgrounds/default_nook.png',

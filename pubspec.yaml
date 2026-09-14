@@ -2,7 +2,7 @@ name: flutter_organiser
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.6+6
+version: 1.0.8+7
 
 environment:
   sdk: ^3.11.0
@@ -83,7 +83,7 @@ msix_config:
   publisher_display_name: Adara Curry
   identity_name: AdaraCurry.StudyGrove
   publisher: CN=181BAD8F-E8A0-4BED-AE16-A01877D84708
-  msix_version: 1.0.7.0
+  msix_version: 1.0.8.0
   logo_path: windows/runner/resources/app_icon.png
   capabilities: internetClient, microphone
   languages: en-us

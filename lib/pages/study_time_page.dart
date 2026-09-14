@@ -111,7 +111,6 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
     final ringSubjects = visible;
     final totals = widget.totals;
     final studyTimeService = widget.studyTimeService;
-    final focusSubject = visible.length == 1 ? visible.first : null;
     final today = dayKey(DateTime.now());
     final weekStart = _mondayOf(DateTime.now());
     final weekDays = [
@@ -176,17 +175,6 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
         ),
       ],
     );
-    final goalButton = _overview == _TimeOverview.rings
-        ? TextButton(
-            onPressed: () => _changeGoal(
-              context,
-              studyTimeService,
-              focusSubject,
-              laneAll,
-            ),
-            child: const Text('Goal'),
-          )
-        : null;
     final hobbyAdd = hobbiesLane
         ? IconButton(
             tooltip: 'Add hobby',
@@ -206,24 +194,23 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   laneToggle,
-                  if (hobbyAdd != null) hobbyAdd,
+                  ?hobbyAdd,
                   overviewToggle,
-                  if (goalButton != null) goalButton,
                 ],
               )
             : Row(
                 children: [
                   laneToggle,
-                  if (hobbyAdd != null) hobbyAdd,
+                  ?hobbyAdd,
                   const Spacer(),
                   overviewToggle,
-                  if (goalButton != null) goalButton,
                 ],
               ),
         const SizedBox(height: 10),
         _LiveStudyRow(
           subjects: laneAll,
           allSubjects: widget.allSubjects,
+          totals: totals,
           studyTimeService: studyTimeService,
           hobbiesLane: hobbiesLane,
           chromeSubjectId: widget.focusSubjectId,
@@ -245,6 +232,7 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
                             subjects: visible,
                             days: weekDays,
                             minutesOn: minutesOn,
+                            onEditGoal: (s) => _changeGoal(context, s),
                           )
                         : _WeekRings(
                             subjects: ringSubjects,
@@ -257,6 +245,7 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
                                 s.id: studyTimeService.goalMinutesFor(s),
                             },
                             onOpen: openSubject,
+                            onEditGoal: (s) => _changeGoal(context, s),
                           ),
                   ),
           ),
@@ -352,84 +341,20 @@ class _StudyTimeBodyState extends State<_StudyTimeBody> {
     );
   }
 
-  Future<void> _changeGoal(
-    BuildContext context,
-    StudyTimeService studyTimeService,
-    Subject? focusSubject,
-    List<Subject> laneSubjects,
-  ) async {
-    final editingSubject = focusSubject;
-    final current = editingSubject == null
-        ? studyTimeService.weekGoalHours
-        : studyTimeService.goalHoursFor(editingSubject);
-    final combined = studyTimeService.combinedGoalHours(laneSubjects);
+  Future<void> _changeGoal(BuildContext context, Subject subject) async {
     final picked = await showDialog<int>(
       context: context,
-      builder: (context) {
-        var hours = current.clamp(1, 20);
-        return AlertDialog(
-          title: Text(
-            editingSubject == null
-                ? 'Default weekly goal'
-                : 'Weekly goal',
-          ),
-          content: StatefulBuilder(
-            builder: (context, setLocal) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    editingSubject == null
-                        ? '$hours hours for subjects without their own goal'
-                        : '$hours hours for ${editingSubject.name}',
-                  ),
-                  if (editingSubject == null && laneSubjects.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'All together: ${combined}h this week',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ],
-                  Slider(
-                    value: hours.toDouble(),
-                    min: 1,
-                    max: 20,
-                    divisions: 19,
-                    label: '${hours}h',
-                    onChanged: (v) => setLocal(() => hours = v.round()),
-                  ),
-                ],
-              );
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, hours),
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
+      builder: (context) => EditWeekGoalDialog(
+        subject: subject,
+        initialMinutes: widget.studyTimeService.goalMinutesFor(subject),
+      ),
     );
     if (picked == null) return;
-    if (editingSubject != null) {
-      await widget.subjectService.updateWeekGoalHours(
-        id: editingSubject.id,
-        hours: picked,
-      );
-    } else {
-      await studyTimeService.setWeekGoalHours(picked);
-    }
+    await widget.subjectService.updateWeekGoalHours(
+      id: subject.id,
+      hours: picked ~/ 60,
+      minutes: picked % 60,
+    );
   }
 }
 
@@ -473,11 +398,13 @@ class _WeekSubjectChart extends StatelessWidget {
     required this.subjects,
     required this.days,
     required this.minutesOn,
+    required this.onEditGoal,
   });
 
   final List<Subject> subjects;
   final List<DateTime> days;
   final int Function(String subjectId, String key) minutesOn;
+  final ValueChanged<Subject> onEditGoal;
 
   @override
   Widget build(BuildContext context) {
@@ -591,6 +518,15 @@ class _WeekSubjectChart extends StatelessWidget {
                       color: scheme.onSurface.withValues(alpha: 0.86),
                     ),
                   ),
+                  TextButton(
+                    key: Key('edit-goal-${s.id}'),
+                    onPressed: () => onEditGoal(s),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: const Text('Goal'),
+                  ),
                 ],
               ),
           ],
@@ -606,12 +542,14 @@ class _WeekRings extends StatelessWidget {
     required this.weekMinutes,
     required this.targetMinutes,
     required this.onOpen,
+    required this.onEditGoal,
   });
 
   final List<Subject> subjects;
   final Map<String, int> weekMinutes;
   final Map<String, int> targetMinutes;
   final ValueChanged<Subject> onOpen;
+  final ValueChanged<Subject> onEditGoal;
 
   @override
   Widget build(BuildContext context) {
@@ -623,7 +561,8 @@ class _WeekRings extends StatelessWidget {
         final cellW = (constraints.maxWidth - gap * (cols - 1)) / cols;
         final rows = (count / cols).ceil().clamp(1, 6);
         final cellH = (constraints.maxHeight - gap * (rows - 1)) / rows;
-        final ring = (cellW < cellH ? cellW : cellH).clamp(150.0, 280.0);
+        final ring =
+            (cellW < cellH - 32 ? cellW : cellH - 32).clamp(140.0, 280.0);
         return Center(
           child: Wrap(
             spacing: gap,
@@ -637,6 +576,7 @@ class _WeekRings extends StatelessWidget {
                   targetMinutes: targetMinutes[s.id] ?? 0,
                   size: ring,
                   onTap: () => onOpen(s),
+                  onEditGoal: () => onEditGoal(s),
                 ),
             ],
           ),
@@ -653,6 +593,7 @@ class _SubjectHourCircle extends StatelessWidget {
     required this.targetMinutes,
     required this.size,
     required this.onTap,
+    required this.onEditGoal,
   });
 
   final Subject subject;
@@ -660,63 +601,76 @@ class _SubjectHourCircle extends StatelessWidget {
   final int targetMinutes;
   final double size;
   final VoidCallback onTap;
+  final VoidCallback onEditGoal;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final progress = studyGoalRatio(minutes, targetMinutes);
-    final goalHours = (targetMinutes / 60).round();
     final ringSize = (size - 36).clamp(120.0, 240.0);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(28),
-      child: SizedBox(
-        width: size,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: ringSize,
-              height: ringSize,
-              child: CustomPaint(
-                painter: _FillCirclePainter(
-                  progress: progress,
-                  color: subject.color,
-                  track: subject.color.withValues(alpha: 0.16),
-                  ring: scheme.outline.withValues(alpha: 0.22),
-                ),
-                child: Center(
-                  child: Text(
-                    '${(progress * 100).round()}%',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: ringSize > 180 ? 28 : 22,
+    return SizedBox(
+      width: size,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: ringSize,
+                  height: ringSize,
+                  child: CustomPaint(
+                    painter: _FillCirclePainter(
+                      progress: progress,
+                      color: subject.color,
+                      track: subject.color.withValues(alpha: 0.16),
+                      ring: scheme.outline.withValues(alpha: 0.22),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${(progress * 100).round()}%',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: ringSize > 180 ? 28 : 22,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 10),
+                Text(
+                  subject.label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: ringSize > 180 ? 16 : 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${formatStudyMinutes(minutes)} / ${formatStudyMinutes(targetMinutes)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurface.withValues(alpha: 0.72),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              subject.label,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: ringSize > 180 ? 16 : 14,
-              ),
+          ),
+          TextButton(
+            key: Key('edit-goal-${subject.id}'),
+            onPressed: onEditGoal,
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
             ),
-            const SizedBox(height: 2),
-            Text(
-              '${formatStudyMinutes(minutes)} / ${goalHours}h',
-              style: TextStyle(
-                fontSize: 12,
-                color: scheme.onSurface.withValues(alpha: 0.72),
-              ),
-            ),
-          ],
-        ),
+            child: const Text('Goal'),
+          ),
+        ],
       ),
     );
   }
@@ -785,6 +739,7 @@ class _LiveStudyRow extends StatefulWidget {
   const _LiveStudyRow({
     required this.subjects,
     required this.allSubjects,
+    required this.totals,
     required this.studyTimeService,
     required this.hobbiesLane,
     this.chromeSubjectId,
@@ -792,6 +747,7 @@ class _LiveStudyRow extends StatefulWidget {
 
   final List<Subject> subjects;
   final List<Subject> allSubjects;
+  final List<StudyDayTotal> totals;
   final StudyTimeService studyTimeService;
   final bool hobbiesLane;
   final String? chromeSubjectId;
@@ -938,6 +894,11 @@ class _LiveStudyRowState extends State<_LiveStudyRow> {
           onPressed: subjects.isEmpty ? null : _addManualTime,
           child: const Text('Add time'),
         ),
+        TextButton(
+          onPressed: subjects.isEmpty ? null : _removeManualTime,
+          style: TextButton.styleFrom(foregroundColor: t.urgent),
+          child: const Text('Remove time'),
+        ),
       ],
     );
   }
@@ -964,12 +925,168 @@ class _LiveStudyRowState extends State<_LiveStudyRow> {
       ),
     );
   }
+
+  Future<void> _removeManualTime() async {
+    final logged = await showDialog<TimeRemoval?>(
+      context: context,
+      builder: (ctx) => RemoveTimeDialog(
+        subjects: widget.subjects,
+        totals: widget.totals,
+        initialSubjectId: _pickedSubjectId,
+        hobbiesLane: widget.hobbiesLane,
+      ),
+    );
+    if (!mounted || logged == null) return;
+    final taken = await widget.studyTimeService.removeMinutes(
+      subjectId: logged.subjectId,
+      minutes: logged.minutes,
+      forDayKey: logged.dayKey,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          taken <= 0
+              ? 'Nothing to remove.'
+              : 'Removed ${formatStudyMinutes(taken)}.',
+        ),
+      ),
+    );
+  }
 }
 
 Color _onSoftStop(Color bg) {
   return bg.computeLuminance() > 0.45
       ? const Color(0xFF2A1612)
       : Colors.white;
+}
+
+class EditWeekGoalDialog extends StatefulWidget {
+  const EditWeekGoalDialog({
+    super.key,
+    required this.subject,
+    required this.initialMinutes,
+  });
+
+  final Subject subject;
+  final int initialMinutes;
+
+  @override
+  State<EditWeekGoalDialog> createState() => _EditWeekGoalDialogState();
+}
+
+class _EditWeekGoalDialogState extends State<EditWeekGoalDialog> {
+  late final TextEditingController _hoursCtrl;
+  late final TextEditingController _minsCtrl;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final minutes = widget.initialMinutes.clamp(1, 40 * 60);
+    _hoursCtrl = TextEditingController(text: '${minutes ~/ 60}');
+    _minsCtrl = TextEditingController(text: '${minutes % 60}');
+  }
+
+  @override
+  void dispose() {
+    _hoursCtrl.dispose();
+    _minsCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final hours = int.tryParse(_hoursCtrl.text.trim()) ?? -1;
+    final minutes = int.tryParse(_minsCtrl.text.trim()) ?? -1;
+    final total = parseWeekGoalMinutes(hours: hours, minutes: minutes);
+    if (total == null) {
+      setState(() => _error = 'Enter at least 1 minute, up to 40 hours.');
+      return;
+    }
+    Navigator.pop(context, total);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Weekly goal'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Target time this week for ${widget.subject.name}.',
+              style: TextStyle(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.78),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const Key('goal_hours'),
+                    controller: _hoursCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(
+                      labelText: 'Hours',
+                    ),
+                    onChanged: (_) {
+                      if (_error != null) setState(() => _error = null);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    key: const Key('goal_minutes'),
+                    controller: _minsCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(
+                      labelText: 'Minutes',
+                    ),
+                    onChanged: (_) {
+                      if (_error != null) setState(() => _error = null);
+                    },
+                    onSubmitted: (_) => _submit(),
+                  ),
+                ),
+              ],
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                style: TextStyle(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.78),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }
 
 class AddManualTimeDialog extends StatefulWidget {
@@ -1115,6 +1232,298 @@ class _AddManualTimeDialogState extends State<AddManualTimeDialog> {
         FilledButton(
           onPressed: _submit,
           child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+}
+
+class TimeRemoval {
+  const TimeRemoval({
+    required this.subjectId,
+    required this.dayKey,
+    required this.minutes,
+  });
+
+  final String subjectId;
+  final String dayKey;
+  final int minutes;
+}
+
+class RemoveTimeDialog extends StatefulWidget {
+  const RemoveTimeDialog({
+    super.key,
+    required this.subjects,
+    required this.totals,
+    this.initialSubjectId,
+    this.hobbiesLane = false,
+  });
+
+  final List<Subject> subjects;
+  final List<StudyDayTotal> totals;
+  final String? initialSubjectId;
+  final bool hobbiesLane;
+
+  @override
+  State<RemoveTimeDialog> createState() => _RemoveTimeDialogState();
+}
+
+class _RemoveTimeDialogState extends State<RemoveTimeDialog> {
+  late final TextEditingController _hoursCtrl;
+  late final TextEditingController _minsCtrl;
+  String? _subjectId;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _hoursCtrl = TextEditingController(text: '0');
+    _minsCtrl = TextEditingController(text: '15');
+    final initial = widget.initialSubjectId;
+    if (initial != null && widget.subjects.any((s) => s.id == initial)) {
+      _subjectId = initial;
+    } else if (widget.subjects.length == 1) {
+      _subjectId = widget.subjects.first.id;
+    }
+  }
+
+  @override
+  void dispose() {
+    _hoursCtrl.dispose();
+    _minsCtrl.dispose();
+    super.dispose();
+  }
+
+  List<StudyDayTotal> _daysFor(String? id) {
+    if (id == null) return const [];
+    final rows = widget.totals
+        .where((t) => t.subjectId == id && t.minutes > 0)
+        .toList()
+      ..sort((a, b) => b.dayKey.compareTo(a.dayKey));
+    if (rows.length <= 14) return rows;
+    return rows.take(14).toList();
+  }
+
+  int _todayMinutes(String? id) {
+    if (id == null) return 0;
+    final key = dayKey(DateTime.now());
+    return widget.totals
+        .where((t) => t.subjectId == id && t.dayKey == key)
+        .fold(0, (n, t) => n + t.minutes);
+  }
+
+  Future<void> _confirmAndPop(TimeRemoval removal) async {
+    if (shouldConfirmStudyTimeRemoval(removal.minutes)) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Remove this time?'),
+          content: Text(
+            'Take ${formatStudyMinutes(removal.minutes)} off '
+            '${formatLoggedStudyDay(removal.dayKey)}.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keep'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: ctx.tokens.urgent,
+                foregroundColor: _onSoftStop(ctx.tokens.urgent),
+              ),
+              child: const Text('Remove'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+    Navigator.pop(context, removal);
+  }
+
+  Future<void> _deleteDay(StudyDayTotal row) async {
+    await _confirmAndPop(
+      TimeRemoval(
+        subjectId: row.subjectId,
+        dayKey: row.dayKey,
+        minutes: row.minutes,
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final hours = int.tryParse(_hoursCtrl.text.trim()) ?? -1;
+    final minutes = int.tryParse(_minsCtrl.text.trim()) ?? -1;
+    final total = parseManualStudyMinutes(hours: hours, minutes: minutes);
+    final id = _subjectId;
+    if (id == null || id.isEmpty) {
+      setState(() {
+        _error = widget.hobbiesLane
+            ? 'Pick a hobby for this time.'
+            : 'Pick a subject for this time.';
+      });
+      return;
+    }
+    if (total == null) {
+      setState(() => _error = 'Enter at least 1 minute.');
+      return;
+    }
+    final available = _todayMinutes(id);
+    final taken = clampRemovedStudyMinutes(available, total);
+    if (taken <= 0) {
+      setState(() => _error = 'Nothing logged today for this one.');
+      return;
+    }
+    await _confirmAndPop(
+      TimeRemoval(
+        subjectId: id,
+        dayKey: dayKey(DateTime.now()),
+        minutes: taken,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final itemLabel = widget.hobbiesLane ? 'Hobby' : 'Subject';
+    final days = _daysFor(_subjectId);
+    return AlertDialog(
+      title: const Text('Remove time'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue: _subjectId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: itemLabel,
+              ),
+              items: [
+                for (final s in widget.subjects)
+                  DropdownMenuItem(value: s.id, child: Text(s.label)),
+              ],
+              onChanged: (id) => setState(() {
+                _subjectId = id;
+                _error = null;
+              }),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Logged recently',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.88),
+              ),
+            ),
+            const SizedBox(height: 6),
+            if (days.isEmpty)
+              Text(
+                'Nothing stored for this one yet.',
+                style: TextStyle(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
+                ),
+              )
+            else
+              for (final row in days)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(formatLoggedStudyDay(row.dayKey)),
+                  subtitle: Text(formatStudyMinutes(row.minutes)),
+                  trailing: IconButton(
+                    tooltip: 'Remove this day',
+                    onPressed: () => _deleteDay(row),
+                    icon: Icon(
+                      Icons.remove_circle_outline,
+                      color: t.urgent,
+                    ),
+                  ),
+                ),
+            const SizedBox(height: 10),
+            Text(
+              'Or take minutes off today',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.88),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const Key('remove_hours'),
+                    controller: _hoursCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(
+                      labelText: 'Hours',
+                    ),
+                    onChanged: (_) {
+                      if (_error != null) setState(() => _error = null);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    key: const Key('remove_minutes'),
+                    controller: _minsCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(
+                      labelText: 'Minutes',
+                    ),
+                    onChanged: (_) {
+                      if (_error != null) setState(() => _error = null);
+                    },
+                    onSubmitted: (_) => _submit(),
+                  ),
+                ),
+              ],
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                style: TextStyle(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.78),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          style: FilledButton.styleFrom(
+            backgroundColor: t.urgent,
+            foregroundColor: _onSoftStop(t.urgent),
+          ),
+          child: const Text('Remove'),
         ),
       ],
     );

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/models.dart';
+import 'study_time_service.dart';
 
 class SubjectService {
   SubjectService(this.uid);
@@ -21,6 +22,7 @@ class SubjectService {
           colorValue: (data['colorValue'] as int?) ?? kSubjectColorPalette.first,
           kind: SubjectKind.fromStorage(data['kind'] as String?),
           weekGoalHours: (data['weekGoalHours'] as num?)?.toInt(),
+          weekGoalMinutes: (data['weekGoalMinutes'] as num?)?.toInt(),
         );
       }).toList();
     });
@@ -66,9 +68,13 @@ class SubjectService {
   Future<void> updateWeekGoalHours({
     required String id,
     required int hours,
+    int minutes = 0,
   }) async {
+    final total = parseWeekGoalMinutes(hours: hours, minutes: minutes);
+    if (total == null) return;
     await _col.doc(id).update({
-      'weekGoalHours': hours.clamp(1, 40),
+      'weekGoalHours': (total ~/ 60).clamp(0, 40),
+      'weekGoalMinutes': total,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }

@@ -471,7 +471,7 @@ class _AppShellState extends State<AppShell> {
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: () => showStudyGrovePaywall(context),
-                  child: const Text('See Pro plans'),
+                  child: const Text('Unlock Pro'),
                 ),
               ],
             ),

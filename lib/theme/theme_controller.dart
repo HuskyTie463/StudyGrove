@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:palette_generator/palette_generator.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/background_assets.dart';
@@ -20,8 +24,10 @@ class ThemeController extends ChangeNotifier {
   static const _spacingKey = 'spacing_density';
   static const _modeKey = 'visual_mode'; // legacy
   static const _bgKey = 'dashboard_background';
+  static const _customBgsKey = 'dashboard_custom_backgrounds';
   static const _useBgBlendKey = 'use_bg_blend';
   static const _opacityKey = 'panel_opacity';
+  static const _maxCustomWallpapers = 12;
 
   VisualStyleFamily style = VisualStyleFamily.signature;
   ThemeBrightnessPref brightnessPref = ThemeBrightnessPref.dark;
@@ -29,6 +35,7 @@ class ThemeController extends ChangeNotifier {
   ContrastLevel contrast = ContrastLevel.normal;
   SpacingDensity spacing = SpacingDensity.comfortable;
   String backgroundAsset = kDefaultBackgroundAsset;
+  List<String> customBackgrounds = const [];
   bool useBackgroundBlend = false;
   double panelOpacity = 0.50;
   ColorScheme? _blendScheme;
@@ -141,11 +148,14 @@ class ThemeController extends ChangeNotifier {
     contrast = ContrastLevelX.fromStorage(prefs.getString(_contrastKey));
     spacing = SpacingDensityX.fromStorage(prefs.getString(_spacingKey));
 
-    final savedBg = prefs.getString(_bgKey);
-    if (savedBg != null && dashboardBackgroundAssets.contains(savedBg)) {
-      backgroundAsset = savedBg;
-    } else {
-      backgroundAsset = kDefaultBackgroundAsset;
+    final savedCustom = prefs.getStringList(_customBgsKey) ?? const [];
+    customBackgrounds = _existingCustomWallpapers(savedCustom);
+    if (customBackgrounds.length != savedCustom.length) {
+      await prefs.setStringList(_customBgsKey, customBackgrounds);
+    }
+    backgroundAsset = _resolveSavedBackground(prefs.getString(_bgKey));
+    if (prefs.getString(_bgKey) != backgroundAsset) {
+      await prefs.setString(_bgKey, backgroundAsset);
     }
 
     if (useBackgroundBlend) {
@@ -218,15 +228,40 @@ class ThemeController extends ChangeNotifier {
   }
 
   Future<void> setBackground(String asset) async {
-    if (!dashboardBackgroundAssets.contains(asset)) return;
+    if (!_isUsableBackground(asset)) return;
     backgroundAsset = asset;
+    if (isCustomWallpaperPath(asset) && !customBackgrounds.contains(asset)) {
+      customBackgrounds = [asset, ...customBackgrounds];
+    }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_bgKey, asset);
+    await prefs.setStringList(_customBgsKey, customBackgrounds);
     if (useBackgroundBlend) {
       await _extractBlendPalette();
     }
     await _persistRemote();
     notifyListeners();
+  }
+
+  /// Copies [sourcePath] into app support and selects it as the wallpaper.
+  Future<bool> importCustomBackground(String sourcePath) async {
+    final dest = await _copyCustomWallpaper(sourcePath);
+    if (dest == null) return false;
+    customBackgrounds = [
+      dest,
+      ...customBackgrounds.where((p) => p != dest),
+    ];
+    if (customBackgrounds.length > _maxCustomWallpapers) {
+      customBackgrounds =
+          customBackgrounds.take(_maxCustomWallpapers).toList();
+    }
+    backgroundAsset = dest;
+    if (useBackgroundBlend) {
+      await _extractBlendPalette();
+    }
+    await _persist();
+    notifyListeners();
+    return true;
   }
 
   Future<void> _persist() async {
@@ -238,6 +273,7 @@ class ThemeController extends ChangeNotifier {
     await prefs.setString(_spacingKey, spacing.name);
     await prefs.setBool(_useBgBlendKey, useBackgroundBlend);
     await prefs.setString(_bgKey, backgroundAsset);
+    await prefs.setStringList(_customBgsKey, customBackgrounds);
     await prefs.setDouble(_opacityKey, panelOpacity);
     // Keep legacy key in sync for older builds.
     await prefs.setString(_modeKey, mode.name);
@@ -256,7 +292,7 @@ class ThemeController extends ChangeNotifier {
           'contrast': contrast.name,
           'spacing': spacing.name,
           'useBackgroundBlend': useBackgroundBlend,
-          'backgroundAsset': backgroundAsset,
+          'backgroundAsset': _remoteBackgroundAsset(),
           'panelOpacity': panelOpacity,
           'updatedAt': FieldValue.serverTimestamp(),
         },
@@ -286,8 +322,11 @@ class ThemeController extends ChangeNotifier {
       final op = appearance['panelOpacity'];
       if (op is num) panelOpacity = op.toDouble().clamp(0.20, 0.85);
       final bg = appearance['backgroundAsset'] as String?;
-      if (bg != null && dashboardBackgroundAssets.contains(bg)) {
-        backgroundAsset = bg;
+      if (!_wallpaperFileExists(backgroundAsset) ||
+          !isCustomWallpaperPath(backgroundAsset)) {
+        if (bg != null && isBundledBackgroundAsset(bg)) {
+          backgroundAsset = bg;
+        }
       }
       if (useBackgroundBlend) await _extractBlendPalette();
       await _persist();
@@ -298,7 +337,7 @@ class ThemeController extends ChangeNotifier {
   Future<void> _extractBlendPalette() async {
     try {
       final palette = await PaletteGenerator.fromImageProvider(
-        AssetImage(backgroundAsset),
+        _wallpaperProvider(backgroundAsset),
         size: const Size(160, 160),
         maximumColorCount: 12,
       );
@@ -390,5 +429,85 @@ class ThemeController extends ChangeNotifier {
           isDark ? 0.65 : 0.75,
         ) ??
         accent;
+  }
+
+  String _resolveSavedBackground(String? saved) {
+    if (saved != null && _isUsableBackground(saved)) return saved;
+    return kDefaultBackgroundAsset;
+  }
+
+  bool _isUsableBackground(String path) {
+    if (isBundledBackgroundAsset(path)) return true;
+    return isCustomWallpaperPath(path) && _wallpaperFileExists(path);
+  }
+
+  List<String> _existingCustomWallpapers(List<String> paths) {
+    return [
+      for (final path in paths)
+        if (isCustomWallpaperPath(path) && _wallpaperFileExists(path)) path,
+    ];
+  }
+
+  String _remoteBackgroundAsset() {
+    if (isBundledBackgroundAsset(backgroundAsset)) return backgroundAsset;
+    if (isCustomWallpaperPath(backgroundAsset)) {
+      return kCustomWallpaperRemoteMarker;
+    }
+    return kDefaultBackgroundAsset;
+  }
+
+  ImageProvider _wallpaperProvider(String path) {
+    if (isCustomWallpaperPath(path) && _wallpaperFileExists(path)) {
+      return FileImage(File(path));
+    }
+    return AssetImage(
+      isBundledBackgroundAsset(path) ? path : kDefaultBackgroundAsset,
+    );
+  }
+
+  bool _wallpaperFileExists(String path) {
+    if (kIsWeb) return false;
+    try {
+      return File(path).existsSync();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String?> _copyCustomWallpaper(String sourcePath) async {
+    if (kIsWeb) return null;
+    try {
+      final src = File(sourcePath);
+      if (!src.existsSync()) return null;
+      final dir = await getApplicationSupportDirectory();
+      final folder = Directory('${dir.path}${Platform.pathSeparator}wallpapers');
+      if (!folder.existsSync()) {
+        await folder.create(recursive: true);
+      }
+      var ext = '.jpg';
+      final dot = sourcePath.lastIndexOf('.');
+      if (dot >= 0 && dot < sourcePath.length - 1) {
+        ext = sourcePath.substring(dot).toLowerCase();
+      }
+      const allowed = {
+        '.jpg',
+        '.jpeg',
+        '.png',
+        '.webp',
+        '.gif',
+        '.bmp',
+        '.heic',
+        '.heif',
+      };
+      if (!allowed.contains(ext)) ext = '.jpg';
+      final dest = File(
+        '${folder.path}${Platform.pathSeparator}'
+        'custom_${DateTime.now().millisecondsSinceEpoch}$ext',
+      );
+      await src.copy(dest.path);
+      return dest.path;
+    } catch (_) {
+      return null;
+    }
   }
 }

@@ -157,18 +157,18 @@ When that job is green: TestFlight → **iOS** → Internal testing. Friend inst
 
 ## 8. In-app purchases (Pro)
 
-Create these subscriptions on the **same** app (`com.adaracurry.studygrove`). Product IDs must match the app.
+Monthly only. Product IDs must match the app.
 
-| Product ID | Type | Price | Duration |
-|---|---|---|---|
-| `pro_monthly` | Auto-renewable / Play subscription | USD 4.99 | 1 month |
-| `pro_annual` | Auto-renewable / Play subscription | USD 39.99 | 1 year |
+| Product ID | Store | Type | Price | Duration |
+|---|---|---|---|---|
+| `pro_monthly` | App Store / Play | Auto-renewable subscription | USD 4.95 | 1 month |
+| `studygrove_pro_monthly` | Microsoft Store (Partner Center identity) | Add-on subscription | USD 4.95 · listing `9PP0RQTCQ47R` | 1 month |
 
-**App Store Connect:** Subscriptions group (e.g. Study Grove Pro) → both products. Enable **In-App Purchase** on the App ID for iOS and macOS. Sandbox testers can buy without being charged.
+**App Store Connect:** Subscriptions group (e.g. Study Grove Pro) → `pro_monthly` only at **USD 4.95**. Enable **In-App Purchase** on the App ID for iOS and macOS. Sandbox testers can buy without being charged.
 
-**Google Play Console:** Monetize → Subscriptions → two products with those IDs (or one subscription each with a monthly / yearly base plan using those IDs). Upload a build that includes Billing before the products can be activated.
+**Google Play Console:** Monetize → Subscriptions → `pro_monthly` with a monthly base plan at **USD 4.95**. Upload a build that includes Billing before the product can be activated.
 
-Windows has no Play/App Store IAP. Desktop debug / Windows stays Pro for local use. Production iOS, Android, and Mac App Store builds enforce the store.
+**Microsoft Partner Center:** Add-on identity **must** be `studygrove_pro_monthly` (the app queries that string). `9PP0RQTCQ47R` is the listing Store ID only. List price **must** be USD 4.95 so checkout matches the in-app fallback (`US$4.95 / month`). Submit the **app package first**, then finish submitting the add-on. Until both are published, checkout may fail in production. Associate the Windows package (Package identity / Store association). Debug / `STUDY_GROVE_UNLOCK_PRO` still unlocks locally. Release Store builds do **not** auto-unlock — they read the add-on from `StoreContext`. The app prefers the live Store formatted price when WinRT / IAP returns one.
 
 ---
 
