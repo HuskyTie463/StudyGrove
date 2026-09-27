@@ -98,7 +98,7 @@
 
     label .req { color: var(--clay); }
 
-    input, textarea {
+    input, textarea, select {
       width: 100%;
       border: 1px solid rgba(63, 82, 73, 0.35);
       background: #fffdf9;
@@ -109,7 +109,7 @@
       font-size: 1rem;
     }
 
-    input:focus, textarea:focus {
+    input:focus, textarea:focus, select:focus {
       outline: 2px solid var(--sage);
       outline-offset: 1px;
     }
@@ -174,6 +174,37 @@
       color: var(--err);
     }
 
+    .panel {
+      background: linear-gradient(180deg, var(--leaf), var(--page));
+      border: 1px solid rgba(63, 82, 73, 0.22);
+      border-radius: 18px;
+      padding: 1.35rem 1.35rem 1.2rem;
+      box-shadow: var(--shadow);
+      margin-bottom: 1.4rem;
+    }
+
+    h2 {
+      margin: 0 0 0.7rem;
+      font-size: clamp(1.35rem, 3vw, 1.7rem);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+
+    .panel p, .panel li {
+      line-height: 1.5;
+    }
+
+    .panel h3 {
+      margin: 1.15rem 0 0.35rem;
+      font-size: 1.05rem;
+    }
+
+    .panel ol, .panel ul {
+      margin: 0.35rem 0 0;
+      padding-left: 1.2rem;
+    }
+
     footer {
       margin-top: 1.4rem;
       color: var(--muted);
@@ -196,20 +227,84 @@
       We read every message. Please include a reply email.
     </p>
 
+    <section class="panel" id="delete-account">
+      <h2>Delete your Study Grove account and data</h2>
+      <p>
+        You can ask here without installing Study Grove and without signing in.
+        Do not send your password. Study Grove will not ask for it.
+      </p>
+      <p>
+        If the app is still installed, you can also delete the account in Settings.
+        That step confirms the password on the device. You do not have to use the app to send this request.
+      </p>
+
+      <h3>How we check the account is yours</h3>
+      <p>
+        Study Grove accounts use an email address and a password kept by Firebase.
+        Choose “Delete my Study Grove account and data” in the form, and enter the email address of that account.
+        Your reply email can be the same address or a different one.
+      </p>
+      <p>
+        Adara Curry then emails the address on the Study Grove account.
+        The account is deleted only after a reply from that mailbox.
+        A request sent from a different address is not enough on its own.
+      </p>
+
+      <h3>What is deleted</h3>
+      <p>After that reply, Adara Curry deletes:</p>
+      <ul>
+        <li>the Firebase login for that account, including the email and authentication record</li>
+        <li>documents stored for that account in Cloud Firestore, including notes, tasks, events, subjects, assessment titles and attachment records, lectures, licence acceptance records, and related nested documents</li>
+        <li>voice-session rows that can be found for that account</li>
+      </ul>
+
+      <h3>What can remain, and for how long</h3>
+      <ul>
+        <li>Cloud Logging in the _Default bucket keeps logs for 30 days. That includes Cloud Run logs. It is not a retention period for your notes.</li>
+        <li>Admin Activity, System Event, and Access Transparency audit logs stay for 400 days in the locked _Required bucket. No other Cloud Logging buckets are configured. Data Access audit logs are not turned on.</li>
+        <li>No scheduled Firestore backups are currently configured.</li>
+        <li>This form does not keep its own database. It emails the request to Adara Curry. Those emails have no fixed automatic expiry. Adara Curry periodically reviews them and deletes them when they are no longer needed for support, follow-up, or legitimate legal or record-keeping purposes.</li>
+        <li>OpenAI, Anthropic, Microsoft, Google, Cloudflare and Resend may keep their own logs or billing records. Study Grove does not set those periods. They are listed in the <a href="../privacy/">Privacy Policy</a>.</li>
+        <li>Files that exist only on a device are not deleted by this web request. That includes assessment-file copies, uploaded avatars, wallpaper copies in app storage, temporary Listen audio, Study AI keys, and the Study AI sharing flag. Original files in Documents or another folder are not deleted. Theme and layout settings that are not tied to the account can remain. A licence acceptance saved on the device before the account existed can remain. Deleting the account in Settings on that device removes the app-managed copies listed above. It still does not delete original files outside the app.</li>
+      </ul>
+
+      <h3>Store subscriptions</h3>
+      <p>
+        Deleting the Study Grove account does not cancel a store subscription.
+        Microsoft Store Pro is the add-on studygrove_pro_monthly. Google Play Pro is the monthly subscription pro_monthly. An Apple subscription is also unchanged.
+        Cancel or manage it in the Microsoft account, Google Play, or Apple account that bought it.
+      </p>
+      <p>
+        <a href="#support-form" id="request-deletion">Request deletion in the form below.</a>
+      </p>
+    </section>
+
     <div id="banner" class="banner" role="status" aria-live="polite"></div>
 
     <form id="support-form" novalidate>
+      <label for="kind">What do you need? <span class="req">*</span></label>
+      <select id="kind" name="kind">
+        <option value="question">A question or problem</option>
+        <option value="deletion">Delete my Study Grove account and data</option>
+      </select>
+
       <label for="name">Name <span class="req">*</span></label>
       <input id="name" name="name" autocomplete="name" maxlength="120" required>
 
       <label for="email">Reply email <span class="req">*</span></label>
       <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>
 
-      <label for="context">App version / Windows (optional)</label>
-      <input id="context" name="context" maxlength="160" placeholder="e.g. Windows 11, Study Grove 1.0.6">
+      <div id="account-email-wrap" hidden>
+        <label for="account-email">Study Grove account email <span class="req">*</span></label>
+        <input id="account-email" name="accountEmail" type="email" autocomplete="email" maxlength="254">
+      </div>
 
-      <label for="message">Question or message <span class="req">*</span></label>
+      <label for="context">App or device (optional)</label>
+      <input id="context" name="context" maxlength="160" placeholder="e.g. Android or Windows, Study Grove 1.0.14">
+
+      <label for="message">Question or message <span class="req" id="message-req">*</span></label>
       <textarea id="message" name="message" maxlength="8000" required></textarea>
+      <p class="hint" id="password-hint">Do not include your password.</p>
 
       <div class="hp" aria-hidden="true">
         <label for="website">Website</label>
@@ -218,7 +313,7 @@
 
       <div class="row">
         <button type="submit" id="send">Send note</button>
-        <p class="hint">You will see a thank-you here if it was accepted. Replies come to the email you entered.</p>
+        <p class="hint">You will see a thank-you here if it was accepted. A question is answered at the reply email. A deletion request is confirmed at the Study Grove account email.</p>
       </div>
     </form>
 
@@ -238,6 +333,32 @@
       var form = document.getElementById("support-form");
       var banner = document.getElementById("banner");
       var send = document.getElementById("send");
+      var kind = document.getElementById("kind");
+      var accountWrap = document.getElementById("account-email-wrap");
+      var accountEmail = document.getElementById("account-email");
+      var message = document.getElementById("message");
+      var messageReq = document.getElementById("message-req");
+
+      function deletionSelected() {
+        return kind.value === "deletion";
+      }
+
+      function syncKind() {
+        var deletion = deletionSelected();
+        accountWrap.hidden = !deletion;
+        accountEmail.required = deletion;
+        message.required = !deletion;
+        messageReq.hidden = deletion;
+        send.textContent = deletion ? "Request deletion" : "Send note";
+      }
+
+      kind.addEventListener("change", syncKind);
+      document.getElementById("request-deletion").addEventListener("click", function () {
+        kind.value = "deletion";
+        syncKind();
+      });
+      if (location.hash === "#delete-account") kind.value = "deletion";
+      syncKind();
 
       function apiOrigin() {
         var raw = String(window.SUPPORT_API_ORIGIN || "").trim();
@@ -269,12 +390,24 @@
         var name = document.getElementById("name").value.trim();
         var email = document.getElementById("email").value.trim();
         var context = document.getElementById("context").value.trim();
-        var message = document.getElementById("message").value.trim();
+        var note = message.value.trim();
+        var account = accountEmail.value.trim();
         var honeypot = document.getElementById("website").value;
+        var deletion = deletionSelected();
 
-        if (!name || !email || !message) {
+        if (!name || !email || (!deletion && !note)) {
           show("err", "Please add your name, a reply email, and a message.");
           return;
+        }
+        if (deletion && !account) {
+          show("err", "Please add the email address of the Study Grove account. Do not send your password.");
+          return;
+        }
+        if (deletion && !note) {
+          note = "Please delete my Study Grove account and the data stored with it.";
+        }
+        if (deletion) {
+          note = "Request: Delete my Study Grove account and data\nStudy Grove account email: " + account + "\n\n" + note;
         }
 
         send.disabled = true;
@@ -287,7 +420,9 @@
             name: name,
             email: email,
             context: context,
-            message: message,
+            message: note,
+            kind: deletion ? "deletion" : "question",
+            accountEmail: deletion ? account : "",
             website: honeypot
           })
         }).then(function (res) {
@@ -299,7 +434,10 @@
         }).then(function (result) {
           if (result.ok) {
             form.reset();
-            show("ok", "Thank you. Your note is on its way. Watch the reply email you entered.");
+            syncKind();
+            show("ok", deletion
+              ? "Thank you. Your deletion request is on its way. Watch the Study Grove account email for a confirmation before anything is deleted."
+              : "Thank you. Your note is on its way. Watch the reply email you entered.");
             return;
           }
           if (result.status === 429) {
