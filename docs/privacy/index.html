@@ -59,6 +59,14 @@ Microsoft subscriptions
 
 Windows Pro is the Microsoft Store add-on studygrove_pro_monthly. Microsoft processes the purchase and can show tax in checkout. Deleting your Study Grove account does not cancel that subscription. Cancel or manage it in your Microsoft account.
 
+Google Play
+
+On Android, Study Grove is a free download. Home, Plan and Subjects do not require a paid add-on. Study Grove Pro is an optional monthly Google Play subscription, product id pro_monthly. There is no annual plan. Google processes the purchase and can show tax in checkout.
+
+This Android internal test does not offer that purchase, so the app does not send a Play purchase token. Included Study AI is unavailable on Android until Google Play purchase verification is operating. A personal key you save is still sent from this device to the provider you chose.
+
+When purchases are turned on, the app sends the purchase token with your Firebase sign-in to Study Grove’s server. The server checks the subscription with Google and links it to that Firebase account. The purchase token is not written into the app log. Deleting your Study Grove account does not cancel a Google Play subscription. Cancel or manage it in Google Play.
+
 What Study Grove deletes
 
 When you delete your account in Settings, the app deletes documents under your user path, then deletes the Firebase login if that cleanup succeeded. If the Cloud Run address is present, it also asks the server to remove voice-session rows it can find for your user id.
@@ -89,9 +97,10 @@ OpenAI, Anthropic, Microsoft, Google, Cloudflare and Resend may keep their own l
 
 Contact Adara Curry
 
-For a privacy question, a correction, or a deletion request, open Settings → Support, or go to https://huskytie463.github.io/StudyGrove/support/ without signing in. Enter your name, a reply email, and the request. Adara Curry receives that form by email. You can also delete the account yourself in Settings. That deletion does not cancel a Microsoft subscription.
+For a privacy question, a correction, or a deletion request, open Settings → Support, or go to https://huskytie463.github.io/StudyGrove/support/ without signing in. Enter your name, a reply email, and the request. Adara Curry receives that form by email. You can also delete the account yourself in Settings. That deletion does not cancel a Microsoft or Google Play subscription.
 
-You can review the current Software Licence Agreement in Settings.</pre>
+You can review the current Software Licence Agreement in Settings.
+</pre>
   </main>
 </body>
 </html>
