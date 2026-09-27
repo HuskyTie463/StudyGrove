@@ -6,94 +6,90 @@
   <meta name="robots" content="noindex,nofollow">
   <title>Study Grove — Privacy Policy</title>
   <style>
-    body {
-      margin: 0;
-      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-      color: #0e1613;
-      background: #f7f1ea;
-    }
-    main {
-      width: min(46rem, calc(100% - 2rem));
-      margin: 0 auto;
-      padding: 2.5rem 0 4rem;
-    }
-    pre {
-      white-space: pre-wrap;
-      font-family: inherit;
-      line-height: 1.5;
-      font-size: 1rem;
-    }
+    body { margin: 0; font-family: "Segoe UI", "Helvetica Neue", sans-serif; color: #0e1613; background: #f7f1ea; }
+    main { width: min(46rem, calc(100% - 2rem)); margin: 0 auto; padding: 2.5rem 0 4rem; }
+    pre { white-space: pre-wrap; font-family: inherit; line-height: 1.5; font-size: 1rem; }
     a { color: #164d36; }
   </style>
 </head>
 <body>
   <main>
     <p><a href="../support/">Support</a></p>
-    <pre>Study Grove — Privacy Policy
+    <pre>
+Study Grove — Privacy Policy
 
 Publisher: Adara Curry
 Effective date: 27/09/2026
 
-This notice describes what Study Grove’s current Windows release actually does. It is not a third-party legal website and it does not invent retention periods or provider guarantees.
+Sign-in
+
+Study Grove asks you to create a Firebase email/password account or sign in before Home, Plan, Subjects, or the rest of the app. There is no separate unsigned planner. Before an account exists you can read this notice, accept the Software Licence Agreement, and use the sign-in screen. A licence acceptance saved then stays on the device until you sign in or clear the app.
 
 Accounts and cloud study data
 
-You can create a Firebase email/password account. Signed-in study data is stored in Google Cloud Firestore on project study-app-18492 under your user path (for example notes, tasks, events, subjects, assessments metadata, lectures, licence acceptance rows, and related nested documents). Firebase also stores the account login (email and authentication record).
-
-Without an account, Study Grove still runs on this device. Guest licence acceptance and device settings stay local.
+Signed-in notes, tasks, events, subjects, assessment titles and attachment records, lectures, licence acceptance rows, and related nested documents are stored in Google Cloud Firestore on project study-app-18492, under your user path. Firebase also stores the account login (email and authentication record).
 
 Assessment files
 
-Assessment titles and attachment records can be stored in your cloud account. Files you upload are copied into this app’s local storage on the device. Those copies are not uploaded to Firestore. Files you originally chose in Documents or another folder are not deleted by the app.
-
-If you install a different Windows package identity (for example a Microsoft Store package after a developer install), those local copies do not move automatically.
+Uploaded assessment files are copied into this app’s storage on the device. Those copies are not uploaded to Firestore. Files you originally chose in Documents or another folder are not deleted by the app. A Microsoft Store install uses a different package identity from a developer install, so those local copies do not move across by themselves.
 
 Licence acceptance records
 
-When you accept the Software Licence Agreement, we record:
-• your Firebase user id if you are signed in
-• the agreement version
-• the acceptance date and time
-• the app version
-• the exact agreement text for that version
+When you accept the Software Licence Agreement, we record your Firebase user id if you are signed in, the agreement version, the acceptance date and time, the app version, and the exact agreement text for that version. Earlier versions are not rewritten.
 
-Signed-in records are stored in Firestore under your user document, collection licenceAcceptances. Your signed-in account can create and delete those documents. They are not edited in place. Historical versions stay until you delete the account.
+Signed-in records are in Firestore, collection licenceAcceptances. Your account can create and delete those documents. They are not edited in place. They stay until you delete the account.
 
-Without an account, the record is stored only on this device. Clearing app data or reinstalling may remove it.
-
-After you sign in, a guest acceptance for a version that still satisfies the current required version is copied to your account so that version is not asked twice.
+A device-only acceptance is copied to the account after you sign in when that version still applies.
 
 Study AI
 
-Study AI is optional. A separate consent screen must be accepted before included or personal-key Study AI runs. You can withdraw in Settings. Home, Plan and Subjects still work if you decline.
+Study AI is optional. A separate consent screen must be accepted first. You can withdraw in Settings. Home, Plan and Subjects still work if you decline.
 
 If you accept, lecture text, PDFs or images, quiz or flashcard questions, and microphone audio (when you use those tools) may be sent to OpenAI and/or Anthropic.
 
 Included Study AI (no personal key) goes through Study Grove’s signed-in Cloud Run server in australia-southeast1. That server holds the publisher OpenAI and Anthropic keys. It checks a Microsoft Store UserCollectionsId plus your Firebase sign-in token. A client “has Pro” flag is not treated as proof.
 
-Included Voice Chat: microphone audio and tutor speech travel through that Cloud Run server, which opens the OpenAI Realtime connection on the server. The app does not receive the publisher OpenAI key.
+Included Voice Chat audio travels through that Cloud Run server, which opens the OpenAI Realtime connection. The app does not receive the publisher OpenAI key. Included text Study AI and Listen also go through Cloud Run.
 
-Included text Study AI and Listen (no personal key) also go through Cloud Run to OpenAI or Anthropic.
+A personal key you save stays in this device’s secure storage. Text and Listen requests using that key go to the provider you chose. Personal-key Voice Chat goes straight to OpenAI and does not pass through Cloud Run.
 
-Personal-key Study AI: a key you save is stored in this device’s secure storage (Windows Credential Locker / flutter_secure_storage). Text and Listen requests using that key go to the provider you chose and do not use the publisher keys. Personal-key Voice Chat opens a Realtime connection straight to OpenAI and does not pass through Cloud Run.
-
-Included Study AI is limited to 40 uses per UTC calendar month while Pro is active. Voice Chat that stays connected longer than eight minutes uses an extra unit. The allowance field on your user document is written only by the server. Firestore rules prevent the app from writing it.
+Included Study AI is limited to 40 uses per UTC calendar month while Pro is active. Starting a Voice Chat session uses one. Another use is taken every eight minutes while that session stays connected. Starting Voice Chat again, including after a timeout or reconnection, can use another. A text Study AI request or Listen request uses one when it is sent. The allowance field is written only by the server.
 
 Microsoft subscriptions
 
-Windows Pro is the Microsoft Store add-on studygrove_pro_monthly. Microsoft processes the purchase and can show tax in checkout. Deleting your Study Grove account does not cancel that subscription. Cancel or manage it in your Microsoft account. This notice does not state Microsoft’s refund period.
+Windows Pro is the Microsoft Store add-on studygrove_pro_monthly. Microsoft processes the purchase and can show tax in checkout. Deleting your Study Grove account does not cancel that subscription. Cancel or manage it in your Microsoft account.
 
-Support
+What Study Grove deletes
 
-Settings → Support opens https://huskytie463.github.io/StudyGrove/support/ without signing into Study Grove. If you send the form, your name, reply email, optional app/version note, and message are posted to a Cloudflare Worker, which emails them with Resend to the publisher inbox. The inbox address is not stored in the app.
+When you delete your account in Settings, the app deletes documents under your user path, then deletes the Firebase login if that cleanup succeeded. If the Cloud Run address is present, it also asks the server to remove voice-session rows it can find for your user id.
 
-Account deletion
+On this device it removes that account’s assessment-file copies, uploaded avatars, wallpaper copies in app storage, temporary Listen audio, Study AI keys, and the Study AI sharing flag. Original files in Documents are not deleted. Theme and layout settings that are not tied to the user id can remain. A licence row saved on the device before the account existed can remain.
 
-When you delete your account, the app lists and deletes documents under your user path (including licence acceptance rows, notes, study time, and nested day tasks), then deletes the Firebase login if that cloud cleanup succeeded. If the Cloud Run URL is present, the app also asks the server to remove server-only voice session rows it can find for your user id.
+Our records, checked 27 September 2026
 
-App-managed copies on this device for that account (assessment file copies, uploaded avatars, wallpaper copies in app storage, temporary Listen audio) and that account’s Study AI keys and sharing consent flag are removed. Original files in your Documents folder are not deleted.
+The Cloud Logging _Default bucket for project study-app-18492 keeps logs for 30 days. That setting applies only to logs routed to _Default, including Cloud Run logs. It does not apply to the audit logs below, and it is not a retention period for your notes.
 
-Theme, layout and other device settings that are not tied to your user id can remain on the device. Guest licence rows on the device can remain. OpenAI, Anthropic, Microsoft, Google, Cloudflare and Resend may keep their own logs or billing records. This project does not set those providers’ retention periods, and it does not confirm Cloud Run or Cloud Logging retention.
+Admin Activity, System Event, and Access Transparency audit logs are routed to the locked _Required bucket, which keeps them for 400 days. No other Cloud Logging buckets are configured on this project. The project IAM policy does not turn on Data Access audit logs.
+
+No scheduled Firestore backups are currently configured.
+
+The support form does not keep its own database. It emails the message to Adara Curry. Those emails have no fixed automatic expiry. Adara Curry periodically reviews them and deletes them when they are no longer needed for support, follow-up, or legitimate legal or record-keeping purposes.
+
+Records held by other companies
+
+OpenAI, Anthropic, Microsoft, Google, Cloudflare and Resend may keep their own logs or billing records. Study Grove does not set those periods. Their notices:
+
+• Google: https://policies.google.com/privacy
+• Firebase: https://firebase.google.com/support/privacy
+• OpenAI: https://openai.com/policies/privacy-policy
+• Anthropic: https://www.anthropic.com/legal/privacy
+• Microsoft: https://www.microsoft.com/privacy/privacystatement
+• Cloudflare: https://www.cloudflare.com/privacypolicy/
+• Resend: https://resend.com/legal/privacy-policy
+
+Contact Adara Curry
+
+For a privacy question, a correction, or a deletion request, open Settings → Support, or go to https://huskytie463.github.io/StudyGrove/support/ without signing in. Enter your name, a reply email, and the request. Adara Curry receives that form by email. You can also delete the account yourself in Settings. That deletion does not cancel a Microsoft subscription.
 
 You can review the current Software Licence Agreement in Settings.</pre>
   </main>
